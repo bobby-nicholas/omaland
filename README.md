@@ -2,8 +2,8 @@
 
 A GUI for the visual half of Hyprland's look and feel, as an Omarchy shell
 plugin. Sliders and switches for gaps, corners, opacity, dimming, blur, shadow,
-glow, and animation speed — applied live as you drag, and saved into
-`~/.config/hypr/looknfeel.lua` as plain Lua you could have typed yourself.
+glow, and animation speed — applied live as you drag, and saved into your
+Hyprland config as plain Lua you could have typed yourself.
 
 Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config).
 
@@ -55,11 +55,11 @@ renders at 0.985 focused / 0.96 unfocused — windows are never quite opaque.
 The **Full opacity** switch clears that ceiling by re-applying the rule at 1.0:
 
 ```lua
-hl.window_rule({ match = { class = ".*" }, opacity = "1 1" })
+o.window(".*", { opacity = "1 1" })
 ```
 
-Registered from `looknfeel.lua`, which loads after Omarchy's defaults, so it
-wins. This is the same result `SUPER+BACKSPACE`
+This goes in `hyprland.lua`, not `looknfeel.lua` — see below. It loads after
+Omarchy's defaults, so it wins. Same result as `SUPER+BACKSPACE`
 (`omarchy-hyprland-window-transparency-toggle`) gives one window, applied to
 all of them — verified identical pixel-for-pixel. The sliders keep working
 below it, since the globals still multiply on top.
@@ -69,8 +69,21 @@ This is the one window rule Omaland writes; everything else it manages is
 
 ## How it writes
 
-Omaland owns one fenced block at the end of `~/.config/hypr/looknfeel.lua` and
-never touches a byte outside it:
+Omaland owns one fenced block per file, and never touches a byte outside them.
+It splits the same way Omarchy does:
+
+| File | Holds |
+|---|---|
+| `~/.config/hypr/looknfeel.lua` | `hl.config` settings and `hl.animation` leaves |
+| `~/.config/hypr/hyprland.lua` | `o.window` rules — only the Full opacity switch writes here |
+
+Omarchy ships no user `windows.lua` and nothing requires `hypr.windows`; the
+stock `hyprland.lua` template's own example for personal config is
+`o.window("qemu", { workspace = "5" })` at the bottom of that file, so that's
+where window rules belong. The second file is only created when a setting needs
+it, and the block is removed again when it doesn't.
+
+The looknfeel block looks like this:
 
 ```lua
 -- >>> omaland managed block >>>
@@ -121,13 +134,16 @@ while dragging and what ends up in the file cannot drift apart.
 | letting go | the same `<body>` spliced into `looknfeel.lua`, then `hyprctl reload` |
 | resetting an option | key dropped from the block, file written, `hyprctl reload` |
 
+When a change touches both files, the reload waits until both writes have
+landed, so Hyprland never reads a half-written pair.
+
 Resets go through the file because Hyprland has no "unset this option" — the
 only way back to a default is to reload a config that doesn't mention the key.
 After every write Omaland runs `hyprctl configerrors` and shows anything
 Hyprland complains about in the footer.
 
-Because the state lives in `looknfeel.lua` and nowhere else, uninstalling
-Omaland changes nothing: your settings are already in your config.
+Because the state lives in your Hyprland config and nowhere else, uninstalling
+Omaland changes nothing: your settings are already where Hyprland reads them.
 
 ### The animation speed multiplier
 
