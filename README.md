@@ -18,14 +18,16 @@ omarchy-shell shell toggle omaland      # from anywhere
 
 | Section | Options |
 |---|---|
-| **Windows** | `gaps_in`, `gaps_out`, `gaps_workspaces`, `float_gaps`, `border_size`, `layout` |
+| **Windows** | `gaps_in`, `gaps_out`, `gaps_workspaces`, `float_gaps`, `border_size`, `border_part_of_window`, `snap:enabled`, `snap:window_gap`, `snap:monitor_gap` |
+| **Layout** | `general:layout`, plus the active engine's own knobs — `dwindle:*`, `master:*` or `scrolling:*`. The other engines' rows are hidden, not greyed out. |
 | **Corners** | `rounding`, `rounding_power` |
 | **Opacity** | Full opacity switch, `active_opacity`, `inactive_opacity`, `fullscreen_opacity` |
-| **Dimming** | `dim_inactive`, `dim_strength`, `dim_special`, `dim_around` |
+| **Dimming** | `dim_inactive`, `dim_strength`, `dim_special`, `dim_around`, `dim_modal` |
 | **Blur** | `enabled`, `size`, `passes`, `noise`, `contrast`, `brightness`, `vibrancy`, `vibrancy_darkness`, `xray`, `special`, `popups` |
 | **Shadow** | `enabled`, `range`, `render_power`, `scale`, `sharp` |
 | **Glow** | `enabled`, `range`, `render_power` |
-| **Animations** | `enabled`, plus a speed multiplier over Omarchy's shipped animation set |
+| **Animations** | `enabled`, `workspace_wraparound`, plus a speed multiplier over Omarchy's shipped animation set |
+| **Groups** | Group bar geometry: `enabled`, `height`, `font_size`, `render_titles`, `indicator_height`, `rounding`, `gradients`, `stacked`, `disable_when_only`. Its `col:*` and `text_color*` keys stay with the theme. |
 
 ### What it deliberately does not edit
 

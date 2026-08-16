@@ -79,11 +79,28 @@ check("every item has a unique key", (function() {
   })
 })())
 
-check("every `needs` points at a real bool", Schema.allItems().every(function(i) {
-  if (!i.needs) return true
+// A plain `needs` dims the row and must name a bool; `needs` + `needsValue`
+// hides it and must name an enum that actually offers that value.
+check("every plain `needs` points at a real bool", Schema.allItems().every(function(i) {
+  if (!i.needs || i.needsValue !== undefined) return true
   const dep = Schema.itemFor(i.needs)
   return dep && dep.type === "bool"
 }))
+check("every `needsValue` names a real option of a real enum", Schema.allItems().every(function(i) {
+  if (i.needsValue === undefined) return true
+  const dep = Schema.itemFor(i.needs)
+  if (!dep || dep.type !== "enum") return false
+  return (dep.options || []).some(function(o) { return String(o.value) === String(i.needsValue) })
+}))
+
+const forceSplit = Schema.itemFor("dwindle:force_split")
+eq("numeric enum stays a number", Schema.quantize(forceSplit, "2"), 2)
+check("numeric enum renders unquoted",
+      Lua.renderConfigBody({ "dwindle:force_split": 2 }, baseline).indexOf("force_split = 2,") !== -1)
+eq("numeric enum round trips",
+   Lua.parseOverrides(Lua.applyBlock("", Lua.renderConfigBody({ "dwindle:force_split": 0 }, baseline)))["dwindle:force_split"], 0)
+check("string enums still quote",
+      Lua.renderConfigBody({ "master:orientation": "top" }, baseline).indexOf('orientation = "top"') !== -1)
 
 // hyprctl is asked only about real options; synthetics are backed by emitted
 // Lua and must stay out of the getoption batch.
@@ -95,8 +112,14 @@ check("every non-synthetic key is queried",
 eq("queryKeys covers exactly the real options",
    Schema.queryKeys().length, Schema.allItems().length - 2)
 
+// Hyprland spells colors as a `col` path segment (general:col:active_border,
+// group:groupbar:col:active) or a segment containing "color"
+// (decoration:shadow:color, group:groupbar:text_color). Matched per segment so
+// scrolling:column_width isn't a false positive.
 check("no color options are exposed", Schema.allItems().every(function(i) {
-  return i.key.indexOf("col") === -1 && i.key.indexOf("color") === -1
+  return i.key.split(":").every(function(seg) {
+    return seg !== "col" && seg.indexOf("color") === -1
+  })
 }))
 
 console.log("\nLua rendering")

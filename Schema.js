@@ -51,12 +51,66 @@ var SECTIONS = [
            { min: 0, max: 40, unit: "px" }),
       item("general:border_size", "Border width", "Thickness of the window border. Color comes from your theme.", "int",
            { min: 0, max: 12, unit: "px" }),
-      item("general:layout", "Layout", "Tiling engine. Scrolling gives you niri-style side-scrolling columns.", "enum",
+      item("decoration:border_part_of_window", "Border inside window", "Count the border as part of the window rather than drawing it outside.", "bool"),
+      item("general:snap:enabled", "Snapping", "Snap floating windows to each other and to screen edges.", "bool"),
+      item("general:snap:window_gap", "Snap distance", "How close a floating window gets before it snaps to another.", "int",
+           { min: 0, max: 50, unit: "px", needs: "general:snap:enabled" }),
+      item("general:snap:monitor_gap", "Snap to edges", "How close a floating window gets before it snaps to a screen edge.", "int",
+           { min: 0, max: 50, unit: "px", needs: "general:snap:enabled" })
+    ]
+  },
+  {
+    id: "layout",
+    icon: "󰕰",
+    title: "Layout",
+    blurb: "The tiling engine, and the knobs belonging to whichever one is active.",
+    items: [
+      item("general:layout", "Engine", "Scrolling gives you niri-style side-scrolling columns.", "enum",
            { options: [
                { value: "dwindle", label: "Dwindle" },
                { value: "master", label: "Master" },
                { value: "scrolling", label: "Scrolling" }
-             ] })
+             ] }),
+
+      item("dwindle:preserve_split", "Preserve split", "Keep the split direction when a window closes.", "bool",
+           { needs: "general:layout", needsValue: "dwindle" }),
+      item("dwindle:smart_split", "Smart split", "Pick the split direction from where in the window you drop.", "bool",
+           { needs: "general:layout", needsValue: "dwindle" }),
+      item("dwindle:force_split", "Split side", "Where a new window lands.", "enum",
+           { numeric: true, needs: "general:layout", needsValue: "dwindle",
+             options: [
+               { value: 0, label: "Cursor" },
+               { value: 1, label: "Before" },
+               { value: 2, label: "After" }
+             ] }),
+      item("dwindle:split_width_multiplier", "Split bias", "Above 1.0 favours splitting side by side.", "float",
+           { min: 0.5, max: 2.0, step: 0.05, decimals: 2, needs: "general:layout", needsValue: "dwindle" }),
+      item("dwindle:default_split_ratio", "Split ratio", "Size of a new split relative to its sibling.", "float",
+           { min: 0.5, max: 1.5, step: 0.05, decimals: 2, needs: "general:layout", needsValue: "dwindle" }),
+
+      item("master:mfact", "Master size", "Fraction of the screen the master window takes.", "float",
+           { min: 0.1, max: 0.9, step: 0.01, decimals: 2, needs: "general:layout", needsValue: "master" }),
+      item("master:orientation", "Master side", "Which edge the master window occupies.", "enum",
+           { needs: "general:layout", needsValue: "master",
+             options: [
+               { value: "left", label: "Left" },
+               { value: "right", label: "Right" },
+               { value: "top", label: "Top" },
+               { value: "bottom", label: "Bottom" },
+               { value: "center", label: "Center" }
+             ] }),
+      item("master:new_status", "New windows", "Where a newly opened window goes.", "enum",
+           { needs: "general:layout", needsValue: "master",
+             options: [
+               { value: "master", label: "Master" },
+               { value: "slave", label: "Slave" },
+               { value: "inherit", label: "Inherit" }
+             ] }),
+
+      item("scrolling:column_width", "Column width", "Fraction of the screen one column takes. 0.97 shows one at a time.", "float",
+           { min: 0.2, max: 1.0, step: 0.01, decimals: 2, needs: "general:layout", needsValue: "scrolling" }),
+      item("scrolling:fullscreen_on_one_column", "Fill on one column", "Let a lone column use the whole screen.", "bool",
+           { needs: "general:layout", needsValue: "scrolling" })
     ]
   },
   {
@@ -102,7 +156,8 @@ var SECTIONS = [
       item("decoration:dim_special", "Special workspace dim", "Dimming applied behind a special workspace.", "float",
            { min: 0.0, max: 1.0, step: 0.01, decimals: 2 }),
       item("decoration:dim_around", "Dim around", "Dimming behind windows using the dimaround window rule.", "float",
-           { min: 0.0, max: 1.0, step: 0.01, decimals: 2 })
+           { min: 0.0, max: 1.0, step: 0.01, decimals: 2 }),
+      item("decoration:dim_modal", "Dim behind modals", "Darken a window while one of its dialogs is open.", "bool")
     ]
   },
   {
@@ -173,7 +228,34 @@ var SECTIONS = [
       item("animations:enabled", "Animations", "Master switch for every animation.", "bool"),
       item(ANIMATION_SPEED_KEY, "Speed", "1.0x is stock Omarchy. Higher is faster.", "float",
            { min: 0.25, max: 3.0, step: 0.05, decimals: 2, unit: "x",
-             synthetic: true, fallback: 1.0, needs: "animations:enabled" })
+             synthetic: true, fallback: 1.0, needs: "animations:enabled" }),
+      item("animations:workspace_wraparound", "Wrap workspaces", "Slide the short way when moving between the first and last workspace.", "bool",
+           { needs: "animations:enabled" })
+    ]
+  },
+  {
+    id: "groups",
+    icon: "󰓪",
+    title: "Groups",
+    blurb: "The tab bar on grouped windows. Its colors come from your theme.",
+    items: [
+      item("group:groupbar:enabled", "Group bar", "Show the tab strip on grouped windows.", "bool"),
+      item("group:groupbar:height", "Height", "Height of the tab strip.", "int",
+           { min: 0, max: 40, unit: "px", needs: "group:groupbar:enabled" }),
+      item("group:groupbar:font_size", "Font size", "Size of the tab titles.", "int",
+           { min: 6, max: 24, unit: "px", needs: "group:groupbar:enabled" }),
+      item("group:groupbar:render_titles", "Show titles", "Draw window titles in the tabs.", "bool",
+           { needs: "group:groupbar:enabled" }),
+      item("group:groupbar:indicator_height", "Indicator height", "Thickness of the active-tab indicator.", "int",
+           { min: 0, max: 12, unit: "px", needs: "group:groupbar:enabled" }),
+      item("group:groupbar:rounding", "Rounding", "Corner radius of the tabs.", "int",
+           { min: 0, max: 20, unit: "px", needs: "group:groupbar:enabled" }),
+      item("group:groupbar:gradients", "Gradients", "Fade the tab backgrounds.", "bool",
+           { needs: "group:groupbar:enabled" }),
+      item("group:groupbar:stacked", "Stacked", "Lay the tabs out vertically.", "bool",
+           { needs: "group:groupbar:enabled" }),
+      item("group:groupbar:disable_when_only", "Hide when alone", "Hide the strip when the group has one window.", "bool",
+           { needs: "group:groupbar:enabled" })
     ]
   }
 ]
@@ -207,7 +289,7 @@ function quantize(item, value) {
   // on an enum's name, and Number("dwindle") is NaN, which then writes
   // layout = 0. Hyprland accepts a layout named "0" without a config error.
   if (item.type === "bool") return value === true
-  if (item.type === "enum") return String(value)
+  if (item.type === "enum") return item.numeric ? Number(value) : String(value)
 
   var n = Number(value)
   if (!isFinite(n)) return 0

@@ -56,6 +56,19 @@ Item {
   property string fontFamily: Style.font.menuFamily
 
   readonly property var section: Schema.SECTIONS[Math.max(0, Math.min(Schema.SECTIONS.length - 1, sectionIndex))]
+  // A `needs` on a bool dims its row; a `needs` + `needsValue` on an enum drops
+  // it, so the Layout section only ever shows the active engine's knobs instead
+  // of three greyed-out sets.
+  readonly property var rows: {
+    var out = []
+    for (var i = 0; i < section.items.length; i++) {
+      var entry = section.items[i]
+      if (entry.needsValue === undefined) { out.push(entry); continue }
+      var dep = Schema.itemFor(entry.needs)
+      if (!dep || String(valueFor(dep)) === String(entry.needsValue)) out.push(entry)
+    }
+    return out
+  }
   readonly property int overrideCount: Object.keys(overrides).length
   readonly property bool sectionModified: {
     for (var i = 0; i < section.items.length; i++)
@@ -179,7 +192,7 @@ Item {
 
   function isAvailable(item) {
     if (item.key === Schema.ANIMATION_SPEED_KEY && root.animationBaseline.length === 0) return false
-    if (!item.needs) return true
+    if (!item.needs || item.needsValue !== undefined) return true
     var dep = Schema.itemFor(item.needs)
     return dep ? valueFor(dep) === true : true
   }
@@ -283,7 +296,7 @@ Item {
   // ------------------------------------------------------------- keyboard
 
   function moveCursor(delta) {
-    var count = root.section.items.length
+    var count = root.rows.length
     if (count === 0) return
     root.cursorIndex = (root.cursorIndex + delta + count) % count
     rows.positionViewAtIndex(root.cursorIndex, ListView.Contain)
@@ -297,9 +310,8 @@ Item {
   }
 
   function cursorItem() {
-    var items = root.section.items
-    if (root.cursorIndex < 0 || root.cursorIndex >= items.length) return null
-    return items[root.cursorIndex]
+    if (root.cursorIndex < 0 || root.cursorIndex >= root.rows.length) return null
+    return root.rows[root.cursorIndex]
   }
 
   function nudge(direction) {
@@ -670,7 +682,7 @@ Item {
               Layout.fillWidth: true
               Layout.fillHeight: true
               clip: true
-              model: root.section.items
+              model: root.rows
               boundsBehavior: Flickable.StopAtBounds
               currentIndex: root.cursorIndex
               onModelChanged: root.cursorIndex = 0
