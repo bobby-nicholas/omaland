@@ -3,9 +3,10 @@
 A GUI for Hyprland's visual look and feel, as an Omarchy shell plugin. Applies
 live as you drag; saves plain Lua into your Hyprland config.
 
-Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config).
+Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config). Also needs `lua`,
+which `hyprland` already depends on. No network access, no elevated privileges.
 
-![Omaland](docs/omaland.png)
+![Omaland](preview.png)
 
 ## Install
 
@@ -13,8 +14,28 @@ Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config).
 omarchy plugin add https://github.com/bobby-nicholas/omaland.git --enable --yes
 ```
 
-Open it from **Style › Hyprland › Visual Editor** in the Omarchy menu, or with
-`omarchy-shell shell toggle omaland`.
+Open it with `omarchy-shell shell toggle bobbynicholas.omaland`.
+
+To reach it from the Omarchy menu instead, add this to
+`~/.config/omarchy/extensions/omarchy-menu.jsonc`. Redeclaring `style.hyprland`
+with no `action` turns it into a submenu, and the original editor action moves
+into a child:
+
+```jsonc
+"style.hyprland": {"icon":"","label":"Hyprland","aliases":["hyprland","looknfeel"]},
+"style.hyprland.omaland": {"icon":"󰸌","label":"Visual Editor","aliases":["omaland"],"action":"omarchy-shell shell toggle bobbynicholas.omaland"},
+"style.hyprland.edit": {"icon":"","label":"Edit Config","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/looknfeel.lua\""},
+```
+
+## Remove
+
+```bash
+omarchy plugin remove bobbynicholas.omaland --yes
+```
+
+Your settings stay — they are plain Lua in the files Hyprland already reads. To
+undo them too, hit **Reset all** first; that clears both managed blocks and
+restores the files byte for byte.
 
 ## What it edits
 

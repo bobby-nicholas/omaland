@@ -25,7 +25,7 @@ Item {
   property var manifest: null
 
   readonly property string home: Quickshell.env("HOME")
-  readonly property string pluginDir: (manifest && manifest.__sourceDir) || (home + "/.config/omarchy/plugins/omaland")
+  readonly property string pluginDir: (manifest && manifest.__sourceDir) || (home + "/.config/omarchy/plugins/bobbynicholas.omaland")
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
   readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
   readonly property string displayPath: overrides[Schema.OPAQUE_WINDOWS_KEY] === true
