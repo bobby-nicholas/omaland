@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omaland",
+  "name": "Omaland",
+  "version": "1.0.0",
+  "author": "Bobby Nicholas",
+  "description": "A panel for editing Hyprland's visual look and feel, with live preview. Writes a managed block into ~/.config/hypr/looknfeel.lua. Summon with: omarchy-shell shell toggle omaland",
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "Panel.qml"
+  }
+}
