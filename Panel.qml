@@ -12,7 +12,8 @@ import "LuaConfig.js" as LuaConfig
 //
 // One renderer feeds both paths, so they can't drift:
 //   preview   hyprctl eval <body>   — instant, in memory, discarded by reload
-//   persist   the same <body> spliced into looknfeel.lua, then hyprctl reload
+//   persist   the same Lua spliced into looknfeel.lua / hyprland.lua, then
+//             hyprctl reload
 //
 // `hyprctl keyword` is deliberately absent: Hyprland rejects it under the Lua
 // parser ("keyword can't work with non-legacy parsers, use eval").
@@ -25,13 +26,21 @@ Item {
 
   readonly property string home: Quickshell.env("HOME")
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
-  readonly property string displayPath: "~/.config/hypr/looknfeel.lua"
+  readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
+  readonly property string displayPath: overrides[Schema.OPAQUE_WINDOWS_KEY] === true
+    ? "~/.config/hypr/looknfeel.lua + hyprland.lua"
+    : "~/.config/hypr/looknfeel.lua"
 
   property bool opened: false
 
-  property var overrides: ({})          // what the managed block sets
+  property var overrides: ({})          // what the managed blocks set
   property var effective: ({})          // what Hyprland reports right now
   property var animationBaseline: []    // Omarchy's shipped animation set
+
+  // Kept apart so reloading one file can't drop the other's keys.
+  property var diskConfig: ({})
+  property var diskWindows: ({})
+  property int pendingSaves: 0
 
   property int sectionIndex: 0
   property int cursorIndex: 0
@@ -59,6 +68,7 @@ Item {
   function open(payloadJson) {
     root.opened = true
     configFile.reload()
+    windowsFile.reload()
     defaultsFile.reload()
     refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
@@ -215,7 +225,7 @@ Item {
   // --------------------------------------------------------------- writing
 
   function livePreview() {
-    var body = LuaConfig.renderBody(root.overrides, root.animationBaseline)
+    var body = LuaConfig.renderPreview(root.overrides, root.animationBaseline)
     if (!body) return
     // One eval in flight at a time with the newest state queued behind it, so
     // a slider drag can't outrun hyprctl.
@@ -224,17 +234,50 @@ Item {
     evalProc.running = true
   }
 
+  function adoptDisk() {
+    var out = {}
+    for (var k in root.diskConfig) out[k] = root.diskConfig[k]
+    for (var j in root.diskWindows) out[j] = root.diskWindows[j]
+    root.overrides = out
+  }
+
   function persistNow() {
     persistTimer.stop()
-    var current = configFile.text()
-    var next = LuaConfig.applyBlock(current, root.overrides, root.animationBaseline)
-    if (next === current) {
+
+    var configCurrent = configFile.text()
+    var windowsCurrent = windowsFile.text()
+    var configNext = LuaConfig.applyBlock(configCurrent, LuaConfig.renderConfigBody(root.overrides, root.animationBaseline))
+    var windowsNext = LuaConfig.applyBlock(windowsCurrent, LuaConfig.renderWindowsBody(root.overrides))
+
+    var writeConfig = configNext !== configCurrent
+    var writeWindows = windowsNext !== windowsCurrent
+
+    if (!writeConfig && !writeWindows) {
       reloadProc.running = true
       return
     }
+
+    root.pendingSaves = (writeConfig ? 1 : 0) + (writeWindows ? 1 : 0)
     root.statusText = "Saving…"
     root.selfWrite = true
-    configFile.setText(next)
+    if (writeConfig) configFile.setText(configNext)
+    if (writeWindows) windowsFile.setText(windowsNext)
+  }
+
+  // Reload only once both files have landed, so Hyprland never reads a
+  // half-written pair.
+  function noteSaved() {
+    root.pendingSaves = Math.max(0, root.pendingSaves - 1)
+    if (root.pendingSaves > 0) return
+    root.selfWrite = false
+    reloadProc.running = true
+  }
+
+  function noteSaveFailed(which) {
+    root.pendingSaves = 0
+    root.selfWrite = false
+    root.statusText = ""
+    root.errorText = "Could not write " + which
   }
 
   // ------------------------------------------------------------- keyboard
@@ -366,22 +409,31 @@ Item {
     atomicWrites: true
     printErrors: false
     watchChanges: true
-    onLoaded: root.overrides = LuaConfig.parseOverrides(text())
-    onLoadFailed: root.overrides = ({})
+    onLoaded: { root.diskConfig = LuaConfig.parseOverrides(text()); root.adoptDisk() }
+    onLoadFailed: { root.diskConfig = ({}); root.adoptDisk() }
     // Chained, not fired alongside the write: the reload must read the new
     // bytes rather than race them.
-    onSaved: {
-      root.selfWrite = false
-      reloadProc.running = true
+    onSaved: root.noteSaved()
+    onSaveFailed: root.noteSaveFailed("~/.config/hypr/looknfeel.lua")
+    // Adopt an external edit rather than overwriting it from a stale copy —
+    // but never mid-edit, or a re-read would yank a slider out from under the
+    // user.
+    onFileChanged: {
+      if (root.selfWrite || persistTimer.running) return
+      reload()
     }
-    onSaveFailed: {
-      root.selfWrite = false
-      root.statusText = ""
-      root.errorText = "Could not write " + root.displayPath
-    }
-    // Someone edited the file while the panel was open. Adopt their version
-    // instead of overwriting it from a stale copy — but never mid-edit, or a
-    // re-read would yank a slider out from under the user.
+  }
+
+  FileView {
+    id: windowsFile
+    path: root.windowsPath
+    atomicWrites: true
+    printErrors: false
+    watchChanges: true
+    onLoaded: { root.diskWindows = LuaConfig.parseOverrides(text()); root.adoptDisk() }
+    onLoadFailed: { root.diskWindows = ({}); root.adoptDisk() }
+    onSaved: root.noteSaved()
+    onSaveFailed: root.noteSaveFailed("~/.config/hypr/hyprland.lua")
     onFileChanged: {
       if (root.selfWrite || persistTimer.running) return
       reload()

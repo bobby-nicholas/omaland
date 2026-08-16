@@ -1,10 +1,13 @@
 .pragma library
 
-// Reads and writes Omaland's managed block in ~/.config/hypr/looknfeel.lua.
+// Renders and parses Omaland's managed blocks, one per file:
 //
-// Everything emitted is ordinary Lua you could have typed, and the same text is
-// what `hyprctl eval` gets for the live preview — so preview and saved state
-// can't drift. Only the region between the fences is ever rewritten.
+//   hypr/looknfeel.lua   hl.config / hl.animation
+//   hypr/hyprland.lua    o.window rules, where the stock template's own
+//                        example puts personal window rules
+//
+// Only what's between the fences is ever rewritten. The same text feeds
+// `hyprctl eval` for the live preview, so preview and saved state can't drift.
 
 var BEGIN_FENCE = "-- >>> omaland managed block >>>"
 var END_FENCE = "-- <<< omaland managed block <<<"
@@ -96,23 +99,10 @@ function renderAnimations(baseline, multiplier) {
   return lines.join("\n")
 }
 
-// Re-applies Omarchy's blanket opacity rule at 1.0. Registered after
-// default/hypr/windows.lua, so it wins; the decoration:*_opacity globals still
-// multiply on top, which is what keeps the sliders meaningful.
-function renderOpaqueWindows() {
-  return "-- omaland:opaque_windows = true\n"
-    + "-- Overrides Omarchy's default 0.985/0.96 window opacity rule.\n"
-    + 'hl.window_rule({ match = { class = ".*" }, opacity = "1 1" })'
-}
-
-// The Lua body of the managed block, minus the fences. Also exactly what gets
-// handed to `hyprctl eval`.
-function renderBody(overrides, baseline) {
+function renderConfigBody(overrides, baseline) {
   var chunks = []
   var config = renderConfig(overrides)
   if (config) chunks.push(config)
-
-  if (overrides[OPAQUE_WINDOWS_KEY] === true) chunks.push(renderOpaqueWindows())
 
   if (overrides[ANIMATION_SPEED_KEY] !== undefined) {
     var m = Number(overrides[ANIMATION_SPEED_KEY])
@@ -126,8 +116,27 @@ function renderBody(overrides, baseline) {
   return chunks.join("\n\n")
 }
 
-function renderBlock(overrides, baseline) {
-  var body = renderBody(overrides, baseline)
+// Re-applies Omarchy's blanket opacity rule at 1.0. Registered after
+// default/hypr/windows.lua, so it wins; the decoration:*_opacity globals still
+// multiply on top, which is what keeps the opacity sliders meaningful.
+function renderWindowsBody(overrides) {
+  if (overrides[OPAQUE_WINDOWS_KEY] !== true) return ""
+  return "-- omaland:opaque_windows = true\n"
+    + "-- Overrides Omarchy's default 0.985/0.96 window opacity rule.\n"
+    + 'o.window(".*", { opacity = "1 1" })'
+}
+
+// Everything Omaland currently asserts, in one chunk, for `hyprctl eval`.
+function renderPreview(overrides, baseline) {
+  var parts = []
+  var config = renderConfigBody(overrides, baseline)
+  var windows = renderWindowsBody(overrides)
+  if (config) parts.push(config)
+  if (windows) parts.push(windows)
+  return parts.join("\n\n")
+}
+
+function renderBlock(body) {
   var header = BEGIN_FENCE + "\n"
     + "-- Written by Omaland. Safe to hand-edit: Omaland re-reads this block\n"
     + "-- every time it opens, and only ever rewrites what's between the fences.\n"
@@ -227,6 +236,8 @@ function splitBlock(text) {
   }
 }
 
+// Serves both files: whichever of markers / hl.config isn't there contributes
+// nothing.
 function parseOverrides(text) {
   var out = {}
   var split = splitBlock(text)
@@ -240,18 +251,17 @@ function parseOverrides(text) {
   return out
 }
 
-// Splice a rendered block in, preserving everything around it. An empty
-// override set removes the block rather than leaving an empty husk.
-function applyBlock(text, overrides, baseline) {
+// An empty body removes the block rather than leaving an empty husk.
+function applyBlock(text, body) {
   var split = splitBlock(text)
 
-  if (Object.keys(overrides).length === 0) {
+  if (!body) {
     if (!split.found) return String(text || "")
     var joined = split.before.replace(/\n+$/, "\n") + split.after.replace(/^\n+/, "")
     return joined.replace(/\n{3,}$/, "\n")
   }
 
-  var block = renderBlock(overrides, baseline)
+  var block = renderBlock(body)
   if (split.found) return split.before + block + split.after
 
   var head = String(text || "")

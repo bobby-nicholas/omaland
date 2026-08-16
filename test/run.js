@@ -19,7 +19,8 @@ const Schema = load("Schema.js", [
   "SECTIONS", "ANIMATION_SPEED_KEY", "allItems", "itemFor", "queryKeys", "quantize"
 ])
 const Lua = load("LuaConfig.js", [
-  "renderBlock", "renderBody", "parseOverrides", "applyBlock", "parseAnimationBaseline", "splitBlock"
+  "renderBlock", "renderConfigBody", "renderWindowsBody", "renderPreview",
+  "parseOverrides", "applyBlock", "parseAnimationBaseline", "splitBlock"
 ])
 
 let failures = 0
@@ -111,24 +112,26 @@ const overrides = {
   "decoration:shadow:sharp": false
 }
 
-const body = Lua.renderBody(overrides, baseline)
+const body = Lua.renderConfigBody(overrides, baseline)
 check("enum renders as a quoted Lua string", body.indexOf('layout = "scrolling"') !== -1, body)
 check("booleans render bare", body.indexOf("enabled = true") !== -1)
 check("nested tables nest", /blur = \{[\s\S]*size = 6/.test(body))
 
-eq("empty override set renders nothing", Lua.renderBody({}, baseline), "")
+eq("empty override set renders nothing", Lua.renderConfigBody({}, baseline), "")
 
-const opaque = Lua.renderBody({ "omaland:opaque_windows": true }, baseline)
-check("opaque toggle emits a blanket window rule",
-      /hl\.window_rule\(\{ match = \{ class = "\.\*" \}, opacity = "1 1" \}\)/.test(opaque), opaque)
+const opaque = Lua.renderWindowsBody({ "omaland:opaque_windows": true })
+check("opaque toggle uses Omarchy's o.window helper",
+      /o\.window\("\.\*", \{ opacity = "1 1" \}\)/.test(opaque), opaque)
 check("opaque toggle writes its marker", opaque.indexOf("-- omaland:opaque_windows = true") !== -1)
-eq("opaque marker round trips",
-   Lua.parseOverrides(Lua.applyBlock("", { "omaland:opaque_windows": true }, baseline))["omaland:opaque_windows"], true)
-// The rule lives outside hl.config(); the table reader must not scrape it.
-eq("window rule does not leak into parsed config keys",
-   Object.keys(Lua.parseOverrides(Lua.applyBlock("", { "omaland:opaque_windows": true }, baseline))),
-   ["omaland:opaque_windows"])
-eq("opaque toggle off emits nothing", Lua.renderBody({ "omaland:opaque_windows": false }, baseline), "")
+eq("opaque toggle off emits nothing", Lua.renderWindowsBody({ "omaland:opaque_windows": false }), "")
+eq("window rules stay out of the looknfeel body",
+   Lua.renderConfigBody({ "omaland:opaque_windows": true }, baseline), "")
+eq("config settings stay out of the hyprland body",
+   Lua.renderWindowsBody({ "decoration:rounding": 12 }), "")
+check("preview carries both bodies", (function() {
+  const both = Lua.renderPreview({ "decoration:rounding": 12, "omaland:opaque_windows": true }, baseline)
+  return both.indexOf("rounding = 12") !== -1 && both.indexOf("o.window") !== -1
+})())
 
 console.log("\nManaged block round trip")
 
@@ -138,11 +141,13 @@ const userFile = [
   ""
 ].join("\n")
 
-const withBlock = Lua.applyBlock(userFile, overrides, baseline)
+const configBody = Lua.renderConfigBody(overrides, baseline)
+const withBlock = Lua.applyBlock(userFile, configBody)
 check("user content is preserved verbatim", withBlock.indexOf(userFile.trim()) === 0)
 eq("round trip is exact", Lua.parseOverrides(withBlock), overrides)
-eq("re-rendering is idempotent", Lua.applyBlock(withBlock, Lua.parseOverrides(withBlock), baseline), withBlock)
-eq("clearing every override restores the original file", Lua.applyBlock(withBlock, {}, baseline), userFile)
+eq("re-rendering is idempotent",
+   Lua.applyBlock(withBlock, Lua.renderConfigBody(Lua.parseOverrides(withBlock), baseline)), withBlock)
+eq("clearing every override restores the original file", Lua.applyBlock(withBlock, ""), userFile)
 
 // A block that was hand-edited between sessions has to survive being read back.
 const handEdited = withBlock.replace("gaps_in = 8", "gaps_in = 21  -- bumped by hand")
@@ -160,18 +165,18 @@ if (baseline.length === 0) {
   const styled = baseline.filter(function(l) { return l.style })[0]
   check("styles survive parsing", !!styled, JSON.stringify(styled))
 
-  const doubled = Lua.renderBody({ "omaland:animation_speed": 2 }, baseline)
+  const doubled = Lua.renderConfigBody({ "omaland:animation_speed": 2 }, baseline)
   const halved = new RegExp("leaf = \"windows\", enabled = true, speed = "
     + String(Math.round((windows.speed / 2) * 100) / 100).replace(".", "\\."))
   check("multiplier halves the duration", halved.test(doubled), doubled.split("\n")[2])
   check("marker is written for round trip", doubled.indexOf("-- omaland:animation_speed = 2") !== -1)
   eq("marker round trips",
-     Lua.parseOverrides(Lua.applyBlock("", { "omaland:animation_speed": 2 }, baseline))["omaland:animation_speed"], 2)
+     Lua.parseOverrides(Lua.applyBlock("", Lua.renderConfigBody({ "omaland:animation_speed": 2 }, baseline)))["omaland:animation_speed"], 2)
 
   // Scaling must always start from the shipped set, never from a previous
   // result, or repeated adjustments would compound.
-  const once = Lua.renderBody({ "omaland:animation_speed": 1.5 }, baseline)
-  const twice = Lua.renderBody({ "omaland:animation_speed": 1.5 }, baseline)
+  const once = Lua.renderConfigBody({ "omaland:animation_speed": 1.5 }, baseline)
+  const twice = Lua.renderConfigBody({ "omaland:animation_speed": 1.5 }, baseline)
   eq("multiplier does not compound", once, twice)
 
   check("disabled leaves emit no speed",
