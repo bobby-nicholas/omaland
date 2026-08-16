@@ -63,6 +63,12 @@ keyword`), handed the same Lua that gets written on release, so preview and
 saved state can't drift. `hyprctl configerrors` runs after every write and
 surfaces in the footer.
 
+**Reading state back** is done by Lua, not by a parser. `read.lua` runs the
+block against recording stubs for `hl` and `o` and reports what it set, so the
+block stays pure Lua with no state comments, and a hand-edit that breaks the
+syntax gets a real Lua error instead of being silently misread. Needs
+`/usr/bin/lua`, which Hyprland already depends on.
+
 ## Development
 
 ```
@@ -70,7 +76,8 @@ manifest.json    plugin declaration (kind: panel)
 Panel.qml        state, hyprctl processes, file IO, layout
 OptionRow.qml    one option row
 Schema.js        the option catalogue
-LuaConfig.js     render and parse the managed blocks
+LuaConfig.js     render the managed blocks, read read.lua's output
+read.lua         runs a block against recording stubs to report what it set
 test/run.js      node test/run.js
 ```
 

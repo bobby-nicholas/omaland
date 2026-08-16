@@ -105,13 +105,8 @@ function renderConfigBody(overrides, baseline) {
   if (config) chunks.push(config)
 
   if (overrides[ANIMATION_SPEED_KEY] !== undefined) {
-    var m = Number(overrides[ANIMATION_SPEED_KEY])
-    var animations = renderAnimations(baseline, m)
-    if (animations) {
-      chunks.push("-- omaland:animation_speed = " + luaNumber(m) + "\n"
-        + "-- Omarchy's animation set, re-timed. Higher multiplier = shorter durations.\n"
-        + animations)
-    }
+    var animations = renderAnimations(baseline, Number(overrides[ANIMATION_SPEED_KEY]))
+    if (animations) chunks.push(animations)
   }
   return chunks.join("\n\n")
 }
@@ -121,9 +116,7 @@ function renderConfigBody(overrides, baseline) {
 // multiply on top, which is what keeps the opacity sliders meaningful.
 function renderWindowsBody(overrides) {
   if (overrides[OPAQUE_WINDOWS_KEY] !== true) return ""
-  return "-- omaland:opaque_windows = true\n"
-    + "-- Overrides Omarchy's default 0.985/0.96 window opacity rule.\n"
-    + 'o.window(".*", { opacity = "1 1" })'
+  return 'o.window(".*", { opacity = "1 1" })'
 }
 
 // Everything Omaland currently asserts, in one chunk, for `hyprctl eval`.
@@ -146,81 +139,54 @@ function renderBlock(body) {
 
 // ------------------------------------------------------------------ parsing
 
-function parseConfigCalls(body, out) {
-  var start = 0
-  while (true) {
-    var at = body.indexOf("hl.config(", start)
-    if (at === -1) return
-    var open = body.indexOf("{", at)
-    if (open === -1) return
-    var end = matchBrace(body, open)
-    if (end === -1) return
-    readTable(body.substring(open + 1, end), [], out)
-    start = end + 1
-  }
-}
+// read.lua runs a chunk against recording stubs and prints one tab-separated
+// record per line. Turning that into state is a split, not a parser.
+//
+//   k  <key:path>  <type>  <value>
+//   a  <leaf>  <enabled>  <speed>  <bezier>  <style>
+//   w  <opacity>
+function parseHarness(stdout) {
+  var result = { overrides: {}, animations: [], opaque: false }
+  var lines = String(stdout || "").split("\n")
 
-// Index of the `}` closing the `{` at `open`, skipping string literals so a
-// brace inside "popin 87%" can't throw the count off.
-function matchBrace(text, open) {
-  var depth = 0
-  for (var i = open; i < text.length; i++) {
-    var c = text.charAt(i)
-    if (c === '"' || c === "'") {
-      var quote = c
-      i++
-      while (i < text.length && text.charAt(i) !== quote) {
-        if (text.charAt(i) === "\\") i++
-        i++
-      }
-      continue
-    }
-    if (c === "{") depth++
-    else if (c === "}") {
-      depth--
-      if (depth === 0) return i
+  for (var i = 0; i < lines.length; i++) {
+    var f = lines[i].split("\t")
+    if (f[0] === "k" && f.length >= 4) {
+      result.overrides[f[1]] = f[2] === "number" ? Number(f[3])
+        : f[2] === "boolean" ? f[3] === "true"
+        : f[3]
+    } else if (f[0] === "a" && f.length >= 6) {
+      result.animations.push({
+        leaf: f[1],
+        enabled: f[2] === "true",
+        speed: f[3] === "" ? undefined : Number(f[3]),
+        bezier: f[4],
+        style: f[5]
+      })
+    } else if (f[0] === "w") {
+      result.opaque = true
     }
   }
-  return -1
+  return result
 }
 
-function stripComments(text) {
-  return text.replace(/--[^\n]*/g, "")
-}
-
-// Tolerant reader for the subset of Lua the block contains: nested tables of
-// scalars. Anything it can't make sense of is skipped rather than guessed at.
-function readTable(text, prefix, out) {
-  var src = stripComments(text)
-  var re = /([A-Za-z_][A-Za-z0-9_]*)\s*=\s*/g
-  var match
-  while ((match = re.exec(src)) !== null) {
-    var name = match[1]
-    var rest = src.substring(re.lastIndex)
-    var lead = rest.match(/^\s*/)[0]
-    var valueStart = re.lastIndex + lead.length
-
-    if (src.charAt(valueStart) === "{") {
-      var close = matchBrace(src, valueStart)
-      if (close === -1) return
-      readTable(src.substring(valueStart + 1, close), prefix.concat([name]), out)
-      re.lastIndex = close + 1
-      continue
+// The multiplier is whatever the block's animations are scaled by, measured
+// against the shipped baseline on a leaf both define.
+function animationSpeedFrom(animations, baseline) {
+  for (var i = 0; i < baseline.length; i++) {
+    var base = baseline[i]
+    if (!base.speed) continue
+    for (var j = 0; j < animations.length; j++) {
+      if (animations[j].leaf !== base.leaf || !animations[j].speed) continue
+      return Math.round((base.speed / animations[j].speed) * 20) / 20
     }
-
-    var scalar = rest.match(/^\s*(true|false|-?\d+(?:\.\d+)?|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/)
-    if (!scalar) continue
-    var raw = scalar[1]
-    var value
-    if (raw === "true") value = true
-    else if (raw === "false") value = false
-    else if (raw.charAt(0) === '"' || raw.charAt(0) === "'") value = raw.substring(1, raw.length - 1)
-    else value = Number(raw)
-
-    out[prefix.concat([name]).join(":")] = value
-    re.lastIndex = valueStart + scalar[1].length
   }
+  return undefined
 }
+
+
+
+
 
 function splitBlock(text) {
   var source = String(text || "")
@@ -236,20 +202,6 @@ function splitBlock(text) {
   }
 }
 
-// Serves both files: whichever of markers / hl.config isn't there contributes
-// nothing.
-function parseOverrides(text) {
-  var out = {}
-  var split = splitBlock(text)
-  if (!split.found) return out
-
-  var speed = split.body.match(/--\s*omaland:animation_speed\s*=\s*(-?\d+(?:\.\d+)?)/)
-  if (speed) out[ANIMATION_SPEED_KEY] = Number(speed[1])
-  if (/--\s*omaland:opaque_windows\s*=\s*true/.test(split.body)) out[OPAQUE_WINDOWS_KEY] = true
-
-  parseConfigCalls(split.body, out)
-  return out
-}
 
 // An empty body removes the block rather than leaving an empty husk.
 function applyBlock(text, body) {
@@ -271,29 +223,3 @@ function applyBlock(text, body) {
 
 // --------------------------------------------------- animation baseline
 
-// Parsed from Omarchy's shipped default/hypr/looknfeel.lua, never from our own
-// previous output — so the multiplier can't compound and follows upstream if
-// Omarchy retunes its animations.
-function parseAnimationBaseline(text) {
-  var source = String(text || "")
-  var out = []
-  var re = /hl\.animation\(\s*\{/g
-  var match
-  while ((match = re.exec(source)) !== null) {
-    var open = source.indexOf("{", match.index)
-    var close = matchBrace(source, open)
-    if (close === -1) break
-    var fields = {}
-    readTable(source.substring(open + 1, close), [], fields)
-    if (typeof fields.leaf !== "string") { re.lastIndex = close + 1; continue }
-    out.push({
-      leaf: fields.leaf,
-      enabled: fields.enabled !== false,
-      speed: typeof fields.speed === "number" ? fields.speed : undefined,
-      bezier: typeof fields.bezier === "string" ? fields.bezier : "",
-      style: typeof fields.style === "string" ? fields.style : ""
-    })
-    re.lastIndex = close + 1
-  }
-  return out
-}

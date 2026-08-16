@@ -25,6 +25,7 @@ Item {
   property var manifest: null
 
   readonly property string home: Quickshell.env("HOME")
+  readonly property string pluginDir: (manifest && manifest.__sourceDir) || (home + "/.config/omarchy/plugins/omaland")
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
   readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
   readonly property string displayPath: overrides[Schema.OPAQUE_WINDOWS_KEY] === true
@@ -113,7 +114,6 @@ Item {
     for (var i = 0; i < keys.length; i++) batch.push("getoption " + keys[i])
     readProc.command = ["hyprctl", "-j", "--batch", batch.join(" ; ")]
     readProc.running = true
-    animProc.running = true
   }
 
   function readOption(entry) {
@@ -142,34 +142,6 @@ Item {
       } catch (e) {
       }
     }
-    if (root.effective[Schema.ANIMATION_SPEED_KEY] !== undefined)
-      next[Schema.ANIMATION_SPEED_KEY] = root.effective[Schema.ANIMATION_SPEED_KEY]
-    root.effective = next
-  }
-
-  // Recover the live multiplier by comparing a probe leaf against the baseline,
-  // so the slider shows the truth even if the marker was hand-edited.
-  function applyAnimationSpeed(raw) {
-    var probe = "windows"
-    var base = 0
-    for (var i = 0; i < root.animationBaseline.length; i++)
-      if (root.animationBaseline[i].leaf === probe) base = root.animationBaseline[i].speed || 0
-    if (base <= 0) return
-
-    var current = 0
-    try {
-      var groups = JSON.parse(raw)
-      var leaves = Array.isArray(groups[0]) ? groups[0] : groups
-      for (var j = 0; j < leaves.length; j++)
-        if (leaves[j].name === probe) current = Number(leaves[j].speed)
-    } catch (e) {
-      return
-    }
-    if (!(current > 0)) return
-
-    var next = {}
-    for (var k in root.effective) next[k] = root.effective[k]
-    next[Schema.ANIMATION_SPEED_KEY] = Math.round((base / current) * 20) / 20
     root.effective = next
   }
 
@@ -352,20 +324,70 @@ Item {
 
   // ------------------------------------------------------------- processes
 
+  // Hand a managed block to read.lua, which runs it against recording stubs
+  // and reports what it set. An empty block skips the subprocess.
+  function readBlock(text, reader) {
+    var body = LuaConfig.splitBlock(text).body
+    if (body.replace(/\s/g, "") === "") {
+      reader.apply("")
+      return
+    }
+    reader.command = ["lua", root.pluginDir + "/read.lua", "-e", body]
+    reader.running = true
+  }
+
+  Process {
+    id: configReader
+    function apply(out) {
+      var read = LuaConfig.parseHarness(out)
+      var next = read.overrides
+      var speed = LuaConfig.animationSpeedFrom(read.animations, root.animationBaseline)
+      if (speed !== undefined) next[Schema.ANIMATION_SPEED_KEY] = speed
+      root.diskConfig = next
+      root.adoptDisk()
+    }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: configReader.apply(text) }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (String(text || "").trim() !== "") root.errorText = "looknfeel.lua: " + String(text).trim()
+    }
+  }
+
+  Process {
+    id: windowsReader
+    function apply(out) {
+      var read = LuaConfig.parseHarness(out)
+      var next = {}
+      if (read.opaque) next[Schema.OPAQUE_WINDOWS_KEY] = true
+      root.diskWindows = next
+      root.adoptDisk()
+    }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: windowsReader.apply(text) }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (String(text || "").trim() !== "") root.errorText = "hyprland.lua: " + String(text).trim()
+    }
+  }
+
+  // Omarchy's shipped animation set, the fixed reference the multiplier scales.
+  Process {
+    id: baselineReader
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.animationBaseline = LuaConfig.parseHarness(text).animations
+        // The block was parsed before the baseline landed, so its multiplier
+        // could not be measured yet.
+        configFile.reload()
+      }
+    }
+  }
+
   Process {
     id: readProc
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyOptions(text)
-    }
-  }
-
-  Process {
-    id: animProc
-    command: ["hyprctl", "animations", "-j"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.applyAnimationSpeed(text)
     }
   }
 
@@ -421,7 +443,7 @@ Item {
     atomicWrites: true
     printErrors: false
     watchChanges: true
-    onLoaded: { root.diskConfig = LuaConfig.parseOverrides(text()); root.adoptDisk() }
+    onLoaded: root.readBlock(text(), configReader)
     onLoadFailed: { root.diskConfig = ({}); root.adoptDisk() }
     // Chained, not fired alongside the write: the reload must read the new
     // bytes rather than race them.
@@ -442,7 +464,7 @@ Item {
     atomicWrites: true
     printErrors: false
     watchChanges: true
-    onLoaded: { root.diskWindows = LuaConfig.parseOverrides(text()); root.adoptDisk() }
+    onLoaded: root.readBlock(text(), windowsReader)
     onLoadFailed: { root.diskWindows = ({}); root.adoptDisk() }
     onSaved: root.noteSaved()
     onSaveFailed: root.noteSaveFailed("~/.config/hypr/hyprland.lua")
@@ -456,9 +478,11 @@ Item {
     id: defaultsFile
     path: root.omarchyPath + "/default/hypr/looknfeel.lua"
     printErrors: false
+    // Run the packaged file directly rather than its text: it is Omarchy's own
+    // and only needs reading once.
     onLoaded: {
-      root.animationBaseline = LuaConfig.parseAnimationBaseline(text())
-      animProc.running = true
+      baselineReader.command = ["lua", root.pluginDir + "/read.lua", path]
+      baselineReader.running = true
     }
   }
 

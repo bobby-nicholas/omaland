@@ -5,6 +5,7 @@
 
 const fs = require("fs")
 const path = require("path")
+const { execFileSync } = require("child_process")
 
 const root = path.join(__dirname, "..")
 
@@ -20,7 +21,7 @@ const Schema = load("Schema.js", [
 ])
 const Lua = load("LuaConfig.js", [
   "renderBlock", "renderConfigBody", "renderWindowsBody", "renderPreview",
-  "parseOverrides", "applyBlock", "parseAnimationBaseline", "splitBlock"
+  "parseHarness", "animationSpeedFrom", "applyBlock", "splitBlock"
 ])
 
 let failures = 0
@@ -44,11 +45,24 @@ function eq(name, actual, expected) {
         "got " + JSON.stringify(actual) + ", want " + JSON.stringify(expected))
 }
 
+// Exercises read.lua for real rather than mocking it — it is the parser now.
+function readSource(source) {
+  return Lua.parseHarness(
+    execFileSync("lua", [path.join(root, "read.lua"), "-e", source],
+                 { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }))
+}
+function readFile(file) {
+  return Lua.parseHarness(
+    execFileSync("lua", [path.join(root, "read.lua"), file],
+                 { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }))
+}
+function readBlock(text) {
+  return readSource(Lua.splitBlock(text).body)
+}
+
 const OMARCHY = process.env.OMARCHY_PATH || "/usr/share/omarchy"
 const defaultsPath = OMARCHY + "/default/hypr/looknfeel.lua"
-const baseline = fs.existsSync(defaultsPath)
-  ? Lua.parseAnimationBaseline(fs.readFileSync(defaultsPath, "utf8"))
-  : []
+const baseline = fs.existsSync(defaultsPath) ? readFile(defaultsPath).animations : []
 
 console.log("\nSchema")
 
@@ -98,7 +112,7 @@ eq("numeric enum stays a number", Schema.quantize(forceSplit, "2"), 2)
 check("numeric enum renders unquoted",
       Lua.renderConfigBody({ "dwindle:force_split": 2 }, baseline).indexOf("force_split = 2,") !== -1)
 eq("numeric enum round trips",
-   Lua.parseOverrides(Lua.applyBlock("", Lua.renderConfigBody({ "dwindle:force_split": 0 }, baseline)))["dwindle:force_split"], 0)
+   readBlock(Lua.applyBlock("", Lua.renderConfigBody({ "dwindle:force_split": 0 }, baseline))).overrides["dwindle:force_split"], 0)
 check("string enums still quote",
       Lua.renderConfigBody({ "master:orientation": "top" }, baseline).indexOf('orientation = "top"') !== -1)
 
@@ -145,7 +159,8 @@ eq("empty override set renders nothing", Lua.renderConfigBody({}, baseline), "")
 const opaque = Lua.renderWindowsBody({ "omaland:opaque_windows": true })
 check("opaque toggle uses Omarchy's o.window helper",
       /o\.window\("\.\*", \{ opacity = "1 1" \}\)/.test(opaque), opaque)
-check("opaque toggle writes its marker", opaque.indexOf("-- omaland:opaque_windows = true") !== -1)
+check("opaque rule is detected by the harness", readSource(opaque).opaque === true)
+check("a plain config block is not read as opaque", readSource("hl.config({ general = { gaps_in = 1 } })").opaque === false)
 eq("opaque toggle off emits nothing", Lua.renderWindowsBody({ "omaland:opaque_windows": false }), "")
 eq("window rules stay out of the looknfeel body",
    Lua.renderConfigBody({ "omaland:opaque_windows": true }, baseline), "")
@@ -167,14 +182,21 @@ const userFile = [
 const configBody = Lua.renderConfigBody(overrides, baseline)
 const withBlock = Lua.applyBlock(userFile, configBody)
 check("user content is preserved verbatim", withBlock.indexOf(userFile.trim()) === 0)
-eq("round trip is exact", Lua.parseOverrides(withBlock), overrides)
+eq("round trip is exact", readBlock(withBlock).overrides, overrides)
 eq("re-rendering is idempotent",
-   Lua.applyBlock(withBlock, Lua.renderConfigBody(Lua.parseOverrides(withBlock), baseline)), withBlock)
+   Lua.applyBlock(withBlock, Lua.renderConfigBody(readBlock(withBlock).overrides, baseline)), withBlock)
 eq("clearing every override restores the original file", Lua.applyBlock(withBlock, ""), userFile)
 
 // A block that was hand-edited between sessions has to survive being read back.
-const handEdited = withBlock.replace("gaps_in = 8", "gaps_in = 21  -- bumped by hand")
-eq("hand edits are read back", Lua.parseOverrides(handEdited)["general:gaps_in"], 21)
+const handEdited = withBlock.replace("gaps_in = 8,", "gaps_in = 21, -- bumped by hand")
+eq("hand edits are read back", readBlock(handEdited).overrides["general:gaps_in"], 21)
+
+// The old regex reader silently accepted a table with a missing separator.
+// Real Lua does not, which is the point of handing parsing to Lua.
+check("a hand edit that breaks the table is reported, not guessed at", (function() {
+  try { readBlock(withBlock.replace("gaps_in = 8,", "gaps_in = 21 -- ate the comma")); return false }
+  catch (e) { return String(e.stderr || "").indexOf("expected") !== -1 }
+})())
 
 console.log("\nAnimation baseline")
 
@@ -192,9 +214,12 @@ if (baseline.length === 0) {
   const halved = new RegExp("leaf = \"windows\", enabled = true, speed = "
     + String(Math.round((windows.speed / 2) * 100) / 100).replace(".", "\\."))
   check("multiplier halves the duration", halved.test(doubled), doubled.split("\n")[2])
-  check("marker is written for round trip", doubled.indexOf("-- omaland:animation_speed = 2") !== -1)
-  eq("marker round trips",
-     Lua.parseOverrides(Lua.applyBlock("", Lua.renderConfigBody({ "omaland:animation_speed": 2 }, baseline)))["omaland:animation_speed"], 2)
+  eq("multiplier is measured back off the block, with no marker",
+     Lua.animationSpeedFrom(readSource(doubled).animations, baseline), 2)
+  eq("an unscaled block measures as 1.0",
+     Lua.animationSpeedFrom(readSource(Lua.renderConfigBody({ "omaland:animation_speed": 1 }, baseline)).animations, baseline), 1)
+  check("nothing but Lua is written — no omaland markers",
+     doubled.indexOf("omaland:") === -1, doubled.split("\n")[0])
 
   // Scaling must always start from the shipped set, never from a previous
   // result, or repeated adjustments would compound.
@@ -204,6 +229,13 @@ if (baseline.length === 0) {
 
   check("disabled leaves emit no speed",
         /leaf = "workspaces", enabled = false \}/.test(doubled))
+  check("styles survive the render/read round trip", (function() {
+    const back = readSource(doubled).animations.filter(function(a) { return a.leaf === "windowsIn" })[0]
+    return back && back.style === "popin 87%" && back.bezier === "easeOutQuint"
+  })())
+  check("read.lua rejects broken Lua loudly", (function() {
+    try { readSource("hl.config({ this is not lua"); return false } catch (e) { return true }
+  })())
 }
 
 console.log("")
