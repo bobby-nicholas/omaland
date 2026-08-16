@@ -526,11 +526,23 @@ Item {
         focus: true
 
         Keys.onPressed: function(event) {
+          // hjkl mirrors the arrows, but only unmodified, so Ctrl+L and friends
+          // stay available to the compositor.
+          var vim = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+
           if (event.key === Qt.Key_Escape) { root.dismiss(); event.accepted = true }
-          else if (event.key === Qt.Key_Down) { root.moveCursor(1); event.accepted = true }
-          else if (event.key === Qt.Key_Up) { root.moveCursor(-1); event.accepted = true }
-          else if (event.key === Qt.Key_Right) { root.nudge(1); event.accepted = true }
-          else if (event.key === Qt.Key_Left) { root.nudge(-1); event.accepted = true }
+          else if (event.key === Qt.Key_Down || (vim && event.key === Qt.Key_J)) {
+            root.moveCursor(1); event.accepted = true
+          }
+          else if (event.key === Qt.Key_Up || (vim && event.key === Qt.Key_K)) {
+            root.moveCursor(-1); event.accepted = true
+          }
+          else if (event.key === Qt.Key_Right || (vim && event.key === Qt.Key_L)) {
+            root.nudge(1); event.accepted = true
+          }
+          else if (event.key === Qt.Key_Left || (vim && event.key === Qt.Key_H)) {
+            root.nudge(-1); event.accepted = true
+          }
           // Back-tab arrives as Key_Backtab or as a shifted Key_Tab depending
           // on compositor and keymap.
           else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
@@ -760,7 +772,7 @@ Item {
             text: {
               if (root.errorText !== "") return root.errorText
               if (root.statusText !== "") return root.statusText
-              return "↑↓ row · ←→ adjust · Tab section · Backspace reset · Esc close"
+              return "↑↓ kj row · ←→ hl adjust · Tab section · Backspace reset · Esc close"
                 + "   —   border colors stay with your theme"
             }
             color: root.errorText !== "" ? Color.urgent : Qt.darker(root.foreground, 1.6)

@@ -35,8 +35,8 @@ Open it from **Style › Hyprland › Visual Editor** in the Omarchy menu, or wi
 
 | | |
 |---|---|
-| `↑` `↓` | move between rows |
-| `←` `→` | adjust the current row |
+| `↑` `↓` / `k` `j` | move between rows |
+| `←` `→` / `h` `l` | adjust the current row |
 | `Tab` / `Shift+Tab` | next / previous section |
 | `Space` `Enter` | toggle |
 | `Backspace` | reset the row to the Omarchy default |
