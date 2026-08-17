@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Omaland
+GenericName=Hyprland Look and Feel
+Comment=Edit gaps, corners, opacity, blur, shadow and animations with live preview
+Exec=omarchy-shell shell toggle bobbynicholas.omaland
+TryExec=omarchy-shell
+Icon=preferences-desktop-theme
+Terminal=false
+StartupNotify=false
+Categories=Settings;DesktopSettings;
+Keywords=hyprland;omarchy;gaps;blur;opacity;animations;rounding;shadow;

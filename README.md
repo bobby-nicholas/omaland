@@ -14,12 +14,22 @@ which `hyprland` already depends on. No network access, no elevated privileges.
 omarchy plugin add https://github.com/bobby-nicholas/omaland.git --enable --yes
 ```
 
-Open it with `omarchy-shell shell toggle bobbynicholas.omaland`.
+Then add it to the launcher, so **SUPER+SPACE › Omaland** opens it:
 
-To reach it from the Omarchy menu instead, add this to
-`~/.config/omarchy/extensions/omarchy-menu.jsonc`. Redeclaring `style.hyprland`
-with no `action` turns it into a submenu, and the original editor action moves
-into a child:
+```bash
+ln -sf ~/.config/omarchy/plugins/bobbynicholas.omaland/omaland.desktop \
+       ~/.local/share/applications/
+```
+
+Omarchy has no install hook for plugins, so this one step is manual. Without
+it, the only way in is `omarchy-shell shell toggle bobbynicholas.omaland`.
+
+<details>
+<summary>Optional: put it in the Omarchy menu too</summary>
+
+Add this to `~/.config/omarchy/extensions/omarchy-menu.jsonc` to turn
+**Style › Hyprland** into a submenu. Redeclaring the id with no `action` flips
+it to a submenu, and the original editor action moves into a child:
 
 ```jsonc
 "style.hyprland": {"icon":"","label":"Hyprland","aliases":["hyprland","looknfeel"]},
@@ -27,10 +37,13 @@ into a child:
 "style.hyprland.edit": {"icon":"","label":"Edit Config","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/looknfeel.lua\""},
 ```
 
+</details>
+
 ## Remove
 
 ```bash
 omarchy plugin remove bobbynicholas.omaland --yes
+rm -f ~/.local/share/applications/omaland.desktop
 ```
 
 Your settings stay — they are plain Lua in the files Hyprland already reads. To
