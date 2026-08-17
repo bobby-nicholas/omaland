@@ -6,9 +6,11 @@
   "author": "Bobby Nicholas",
   "description": "A panel for editing Hyprland's visual look and feel, with live preview. Writes a managed block into ~/.config/hypr/looknfeel.lua. Summon with: omarchy-shell shell toggle bobbynicholas.omaland",
   "kinds": [
-    "panel"
+    "panel",
+    "service"
   ],
   "entryPoints": {
-    "panel": "Panel.qml"
+    "panel": "Panel.qml",
+    "service": "Service.qml"
   }
 }

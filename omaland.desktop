@@ -10,3 +10,4 @@ Terminal=false
 StartupNotify=false
 Categories=Settings;DesktopSettings;
 Keywords=hyprland;omarchy;gaps;blur;opacity;animations;rounding;shadow;
+X-Omaland-Managed=true

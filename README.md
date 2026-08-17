@@ -14,15 +14,8 @@ which `hyprland` already depends on. No network access, no elevated privileges.
 omarchy plugin add https://github.com/bobby-nicholas/omaland.git --enable --yes
 ```
 
-Then add it to the launcher, so **SUPER+SPACE › Omaland** opens it:
-
-```bash
-ln -sf ~/.config/omarchy/plugins/bobbynicholas.omaland/omaland.desktop \
-       ~/.local/share/applications/
-```
-
-Omarchy has no install hook for plugins, so this one step is manual. Without
-it, the only way in is `omarchy-shell shell toggle bobbynicholas.omaland`.
+That's it — open it from **SUPER+SPACE › Omaland**, or with
+`omarchy-shell shell toggle bobbynicholas.omaland`.
 
 <details>
 <summary>Optional: put it in the Omarchy menu too</summary>
@@ -43,7 +36,6 @@ it to a submenu, and the original editor action moves into a child:
 
 ```bash
 omarchy plugin remove bobbynicholas.omaland --yes
-rm -f ~/.local/share/applications/omaland.desktop
 ```
 
 Your settings stay — they are plain Lua in the files Hyprland already reads. To
@@ -97,6 +89,12 @@ keyword`), handed the same Lua that gets written on release, so preview and
 saved state can't drift. `hyprctl configerrors` runs after every write and
 surfaces in the footer.
 
+**The launcher entry** is installed by the plugin, because Omarchy has no
+install hook and no way for a plugin to register itself. Enabling writes
+`~/.local/share/applications/omaland.desktop`; disabling or removing the plugin
+deletes it again. Only a file carrying `X-Omaland-Managed=true` is ever written
+or deleted, so your own entry at that path is left alone.
+
 **Reading state back** is done by Lua, not by a parser. `read.lua` runs the
 block against recording stubs for `hl` and `o` and reports what it set, so the
 block stays pure Lua with no state comments, and a hand-edit that breaks the
@@ -108,6 +106,7 @@ syntax gets a real Lua error instead of being silently misread. Needs
 ```
 manifest.json    plugin declaration (kind: panel)
 Panel.qml        state, hyprctl processes, file IO, layout
+Service.qml      installs and removes the launcher entry
 OptionRow.qml    one option row
 Schema.js        the option catalogue
 LuaConfig.js     render the managed blocks, read read.lua's output
