@@ -1,11 +1,23 @@
+<div align="center">
+
+<img src="icon.png" alt="" width="120">
+
 # Omaland
 
-A GUI for Hyprland's visual look and feel, as an Omarchy shell plugin. Applies
-live as you drag; saves plain Lua into your Hyprland config.
+**A GUI for Hyprland's visual look and feel.**
 
-Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config). No network, no sudo.
+An Omarchy shell plugin. Applies live as you drag,
+and saves plain Lua into your Hyprland config.
 
-![Omaland](preview.png)
+<img src="https://img.shields.io/badge/Omarchy-4.x-a855f7?style=flat-square" alt="Omarchy 4.x">
+<img src="https://img.shields.io/badge/Hyprland-%E2%89%A5%200.56-22d3ee?style=flat-square" alt="Hyprland 0.56+">
+<img src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" alt="MIT">
+
+<br><br>
+
+<img src="preview.png" alt="The Omaland panel, showing the Windows section with sliders for gaps and border width" width="820">
+
+</div>
 
 ## Install
 
@@ -13,7 +25,8 @@ Built for **Omarchy 4.x** (Hyprland ≥ 0.56, Lua config). No network, no sudo.
 omarchy plugin add https://github.com/bobby-nicholas/omaland.git --enable --yes
 ```
 
-Open it from **SUPER+SPACE › Omaland**.
+Open it from **SUPER+SPACE › Omaland**. No network access and no sudo, at
+install or at runtime.
 
 To remove it, `omarchy plugin remove bobbynicholas.omaland --yes`. Your settings
 stay — they are plain Lua in the files Hyprland already reads. Hit **Reset all**
