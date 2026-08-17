@@ -29,8 +29,8 @@ function item(key, label, description, type, extra) {
   return o
 }
 
-// Synthetic options are backed by emitted Lua rather than a config key, and
-// persisted as `-- omaland:<name> = <value>` markers in the managed block.
+// Synthetic options have no config key of their own. They are backed by the
+// Lua they emit, and read back by measuring that Lua.
 var ANIMATION_SPEED_KEY = "omaland:animation_speed"
 var OPAQUE_WINDOWS_KEY = "omaland:opaque_windows"
 
