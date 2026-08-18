@@ -4,11 +4,8 @@
   "name": "Omaland",
   "version": "1.0.0",
   "author": "Bobby Nicholas",
-  "description": "A panel for editing Hyprland's visual look and feel, with live preview. Writes a managed block into ~/.config/hypr/looknfeel.lua. Summon with: omarchy-shell shell toggle bobbynicholas.omaland",
-  "kinds": [
-    "panel",
-    "service"
-  ],
+  "description": "A panel for editing Hyprland's visual look and feel, with live preview. Writes a managed block into ~/.config/hypr/looknfeel.lua. Open from the Omarchy menu by searching 'Omaland' or from the terminal with: omarchy-shell shell toggle bobbynicholas.omaland",
+  "kinds": ["panel", "service"],
   "entryPoints": {
     "panel": "Panel.qml",
     "service": "Service.qml"
