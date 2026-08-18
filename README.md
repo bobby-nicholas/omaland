@@ -25,8 +25,7 @@ and saves plain Lua into your Hyprland config.
 omarchy plugin add https://github.com/bobby-nicholas/omaland.git --enable --yes
 ```
 
-Open it from **SUPER+SPACE › Omaland**. No network access and no sudo, at
-install or at runtime.
+Open it from **SUPER+SPACE › Omaland**. No network access, no sudo.
 
 To remove it, `omarchy plugin remove bobbynicholas.omaland --yes`. Your settings
 stay — they are plain Lua in the files Hyprland already reads. Hit **Reset all**
