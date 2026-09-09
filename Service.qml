@@ -15,6 +15,8 @@ QtObject {
 
   readonly property string dest: Quickshell.env("HOME") + "/.local/share/applications/omaland.desktop"
   readonly property string marker: "^X-Omaland-Managed=true$"
+  readonly property string desktopSource: String(Qt.resolvedUrl("omaland.desktop")).replace(/^file:\/\//, "")
+  readonly property string iconSource: String(Qt.resolvedUrl("icon.png")).replace(/^file:\/\//, "")
 
   readonly property string installScript:
       '[ -f "$1" ] || exit 0\n'
@@ -29,15 +31,14 @@ QtObject {
 
   property bool installed: false
 
-  // The shell assigns manifest after createObject() has already run
-  // Component.onCompleted, and a binding on it has not re-evaluated by the
-  // time this fires, so the paths are built here rather than bound.
+  // The shell assigns manifest after createObject() has already run. Current
+  // third-party manifests contain public metadata only, so bundled files are
+  // resolved relative to this component instead of using host-private fields.
   onManifestChanged: {
-    var dir = manifest && manifest.__sourceDir
-    if (installed || !dir) return
+    if (installed || !manifest) return
     installed = true
     Quickshell.execDetached(["sh", "-c", installScript, "sh",
-                             dir + "/omaland.desktop", dest, marker, dir + "/icon.png"])
+                             desktopSource, dest, marker, iconSource])
   }
 
   // Reached on disable and on remove alike: omarchy-plugin-remove disables
