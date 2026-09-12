@@ -210,9 +210,9 @@ var SECTIONS = [
     id: "glow",
     icon: "󱒛",
     title: "Glow",
-    blurb: "Halo around the focused window. Its color is a separate Hyprland option Omaland leaves alone.",
+    blurb: "Halo around every window, not just the focused one. Its color is a separate Hyprland option Omaland leaves alone.",
     items: [
-      item("decoration:glow:enabled", "Glow", "Master switch for the focus glow.", "bool"),
+      item("decoration:glow:enabled", "Glow", "Master switch for the glow.", "bool"),
       item("decoration:glow:range", "Range", "How far the glow reaches.", "int",
            { min: 0, max: 50, unit: "px", needs: "decoration:glow:enabled" }),
       item("decoration:glow:render_power", "Falloff", "How sharply the glow fades out.", "int",
