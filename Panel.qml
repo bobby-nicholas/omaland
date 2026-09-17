@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Ui
 import "Schema.js" as Schema
 import "LuaConfig.js" as LuaConfig
+import "Paths.js" as Paths
 
 // Omaland — a GUI for the visual half of ~/.config/hypr/looknfeel.lua.
 //
@@ -25,7 +26,7 @@ Item {
   property var manifest: null
 
   readonly property string home: Quickshell.env("HOME")
-  readonly property string pluginDir: (manifest && manifest.__sourceDir) || (home + "/.config/omarchy/plugins/bobbynicholas.omaland")
+  readonly property string readLua: Paths.fromUrl(Qt.resolvedUrl("read.lua"))
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
   readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
   readonly property string displayPath: overrides[Schema.OPAQUE_WINDOWS_KEY] === true
@@ -332,7 +333,7 @@ Item {
       reader.apply("")
       return
     }
-    reader.command = ["lua", root.pluginDir + "/read.lua", "-e", body]
+    reader.command = ["lua", root.readLua, "-e", body]
     reader.running = true
   }
 
@@ -481,7 +482,7 @@ Item {
     // Run the packaged file directly rather than its text: it is Omarchy's own
     // and only needs reading once.
     onLoaded: {
-      baselineReader.command = ["lua", root.pluginDir + "/read.lua", path]
+      baselineReader.command = ["lua", root.readLua, path]
       baselineReader.running = true
     }
   }
