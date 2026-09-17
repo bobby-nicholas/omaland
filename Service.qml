@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import "Paths.js" as Paths
 
 // Installs the launcher entry, so the panel is reachable from SUPER+SPACE
 // without the user wiring up a keybind first. Omarchy has no install hook and
@@ -12,6 +13,12 @@ QtObject {
   property string omarchyPath: ""
   property var shell: null
   property var manifest: null
+
+  // Resolved from this file's own URL rather than the manifest: the shell
+  // strips __sourceDir from the manifest it hands third-party plugins, so
+  // asking it where we live returns undefined. See Paths.js.
+  readonly property string source: Paths.fromUrl(Qt.resolvedUrl("omaland.desktop"))
+  readonly property string icon: Paths.fromUrl(Qt.resolvedUrl("icon.png"))
 
   readonly property string dest: Quickshell.env("HOME") + "/.local/share/applications/omaland.desktop"
   readonly property string marker: "^X-Omaland-Managed=true$"
@@ -29,15 +36,10 @@ QtObject {
 
   property bool installed: false
 
-  // The shell assigns manifest after createObject() has already run
-  // Component.onCompleted, and a binding on it has not re-evaluated by the
-  // time this fires, so the paths are built here rather than bound.
-  onManifestChanged: {
-    var dir = manifest && manifest.__sourceDir
-    if (installed || !dir) return
+  Component.onCompleted: {
+    if (source === "" || icon === "") return
     installed = true
-    Quickshell.execDetached(["sh", "-c", installScript, "sh",
-                             dir + "/omaland.desktop", dest, marker, dir + "/icon.png"])
+    Quickshell.execDetached(["sh", "-c", installScript, "sh", source, dest, marker, icon])
   }
 
   // Reached on disable and on remove alike: omarchy-plugin-remove disables

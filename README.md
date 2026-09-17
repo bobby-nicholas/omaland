@@ -82,7 +82,10 @@ surfaces in the footer.
 **The launcher entry** is installed by the plugin, because Omarchy has no
 install hook. Enabling writes `~/.local/share/applications/omaland.desktop`;
 disabling or removing deletes it. Only a file carrying `X-Omaland-Managed=true`
-is ever touched, so your own entry at that path is left alone.
+is ever touched, so your own entry at that path is left alone. The plugin's own
+directory is resolved from `Qt.resolvedUrl()` rather than from the manifest —
+the shell hands third-party plugins a sanitized manifest with `__sourceDir`
+stripped, so asking it where we live returns nothing.
 
 **Full opacity** clears the `opacity = "0.985 0.96"` rule Omarchy applies to
 every window. That rule multiplies with the opacity sliders, so without the
@@ -111,6 +114,7 @@ Panel.qml        state, hyprctl processes, file IO, layout
 OptionRow.qml    one option row
 Schema.js        the option catalogue
 LuaConfig.js     render the managed blocks, read read.lua's output
+Paths.js         locate the plugin's own directory from a QML file's URL
 read.lua         runs a block against recording stubs to report what it set
 Service.qml      installs and removes the launcher entry
 test/run.js      node test/run.js
