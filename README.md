@@ -79,6 +79,11 @@ keyword`), handed the same Lua that gets written on release, so preview and
 saved state can't drift. `hyprctl configerrors` runs after every write and
 surfaces in the footer.
 
+**The shell follows along.** The Omarchy shell mirrors rounding and outer gaps
+into its own menu, notifications and panels, but only re-reads them at startup
+and on a theme change. Omaland asks it to re-read after every preview and save,
+so the whole interface tracks the sliders, not just the windows.
+
 **The launcher entry** is installed by the plugin, because Omarchy has no
 install hook. Enabling writes `~/.local/share/applications/omaland.desktop`;
 disabling or removing deletes it. Only a file carrying `X-Omaland-Managed=true`

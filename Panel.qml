@@ -220,6 +220,15 @@ Item {
     evalProc.running = true
   }
 
+  // The shell mirrors decoration:rounding and general:gaps_out into Style for
+  // the menu, notifications and every panel, but only re-reads them at startup
+  // and when a theme is applied — it doesn't watch looknfeel.lua. Ask it to
+  // re-read after anything that changes what Hyprland reports. Undocumented
+  // surface, so a missing method leaves the shell stale rather than throwing.
+  function syncShellStyle() {
+    if (typeof Style.scheduleRefresh === "function") Style.scheduleRefresh()
+  }
+
   function adoptDisk() {
     var out = {}
     for (var k in root.diskConfig) out[k] = root.diskConfig[k]
@@ -395,6 +404,7 @@ Item {
   Process {
     id: evalProc
     onExited: {
+      root.syncShellStyle()
       if (!root.previewPending) return
       root.previewPending = false
       Qt.callLater(root.livePreview)
@@ -407,6 +417,7 @@ Item {
     onExited: {
       errorsProc.running = true
       root.refresh()
+      root.syncShellStyle()
     }
   }
 
