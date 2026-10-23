@@ -33,6 +33,7 @@ function item(key, label, description, type, extra) {
 // Lua they emit, and read back by measuring that Lua.
 var ANIMATION_SPEED_KEY = "omaland:animation_speed"
 var OPAQUE_WINDOWS_KEY = "omaland:opaque_windows"
+var OPAQUE_MEDIA_KEY = "omaland:opaque_media"
 
 var SECTIONS = [
   {
@@ -141,7 +142,11 @@ var SECTIONS = [
       item("decoration:inactive_opacity", "Unfocused", "Opacity of every other window.", "float",
            { min: 0.3, max: 1.0, step: 0.01, decimals: 2 }),
       item("decoration:fullscreen_opacity", "Fullscreen", "Opacity while a window is fullscreen.", "float",
-           { min: 0.3, max: 1.0, step: 0.01, decimals: 2 })
+           { min: 0.3, max: 1.0, step: 0.01, decimals: 2 }),
+      // The sliders multiply into every window, including the ones Omarchy
+      // exempts from translucency. On by default; see LuaConfig.renderMediaRules.
+      item(OPAQUE_MEDIA_KEY, "Keep media opaque", "Video, images, games and picture-in-picture skip the sliders above.", "bool",
+           { synthetic: true, fallback: true })
     ]
   },
   {

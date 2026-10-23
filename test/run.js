@@ -21,7 +21,8 @@ const Schema = load("Schema.js", [
 ])
 const Lua = load("LuaConfig.js", [
   "renderBlock", "renderConfigBody", "renderWindowsBody", "renderPreview",
-  "parseHarness", "animationSpeedFrom", "applyBlock", "splitBlock"
+  "parseHarness", "animationSpeedFrom", "applyBlock", "splitBlock",
+  "lowersOpacity"
 ])
 
 let failures = 0
@@ -120,11 +121,11 @@ check("string enums still quote",
 // Lua and must stay out of the getoption batch.
 eq("synthetic keys are excluded from the hyprctl batch",
    Schema.allItems().filter(function(i) { return i.synthetic }).map(function(i) { return i.key }).sort(),
-   ["omaland:animation_speed", "omaland:opaque_windows"])
+   ["omaland:animation_speed", "omaland:opaque_media", "omaland:opaque_windows"])
 check("every non-synthetic key is queried",
       Schema.queryKeys().every(function(k) { return k.indexOf("omaland:") !== 0 }))
 eq("queryKeys covers exactly the real options",
-   Schema.queryKeys().length, Schema.allItems().length - 2)
+   Schema.queryKeys().length, Schema.allItems().length - 3)
 
 // Hyprland spells colors as a `col` path segment (general:col:active_border,
 // group:groupbar:col:active) or a segment containing "color"
@@ -166,6 +167,52 @@ eq("window rules stay out of the looknfeel body",
    Lua.renderConfigBody({ "omaland:opaque_windows": true }, baseline), "")
 eq("config settings stay out of the hyprland body",
    Lua.renderWindowsBody({ "decoration:rounding": 12 }), "")
+console.log("\nMedia opacity")
+
+// The sliders multiply into every window, so Omarchy's media exemptions only
+// hold while they sit at 1. The rules follow Omarchy's own tags, never a list.
+const dimmed = { "decoration:inactive_opacity": 0.9 }
+const media = Lua.renderWindowsBody(dimmed)
+check("a lowered slider brings the media rules", media.indexOf("omaland-opaque") !== -1, media)
+check("media rules follow Omarchy's opt-out tag",
+      media.indexOf('o.window({ tag = "negative:default-opacity" }, { tag = "+omaland-opaque" })') !== -1, media)
+check("browsers are handed back to their own translucency",
+      media.indexOf('{ tag = "chromium-based-browser" }, { tag = "-omaland-opaque" }') !== -1
+      && media.indexOf('{ tag = "firefox-based-browser" }, { tag = "-omaland-opaque" }') !== -1, media)
+check("media opacity ignores the globals",
+      media.indexOf('{ tag = "omaland-opaque" }, { opacity = "1 override 1 override 1 override" }') !== -1, media)
+check("no app is named — nothing to go stale", !/class|mpv|youtube|steam/i.test(media), media)
+eq("sliders at 1 write no media rules",
+   Lua.renderWindowsBody({ "decoration:inactive_opacity": 1, "decoration:active_opacity": 1 }), "")
+const mediaOff = Lua.renderWindowsBody({ "decoration:inactive_opacity": 0.9, "omaland:opaque_media": false })
+check("switched off drops the override", mediaOff.indexOf("override") === -1, mediaOff)
+check("switched off keeps the tagging, so off is on disk", mediaOff.indexOf("+omaland-opaque") !== -1, mediaOff)
+check("off is remembered with the sliders at 1",
+      Lua.renderWindowsBody({ "omaland:opaque_media": false }).indexOf("+omaland-opaque") !== -1)
+eq("the switch stays out of the looknfeel body",
+   Lua.renderConfigBody({ "omaland:opaque_media": false }, baseline), "")
+check("each opacity slider counts", ["active", "inactive", "fullscreen"].every(function(k) {
+  const o = {}; o["decoration:" + k + "_opacity"] = 0.5
+  return Lua.lowersOpacity(o)
+}))
+
+const mediaRead = readSource(media)
+check("media rules are detected by the harness", mediaRead.mediaTagged && mediaRead.mediaOverride)
+check("media rules are not mistaken for Full opacity", mediaRead.opaque === false)
+check("Full opacity is not mistaken for media rules",
+      !readSource(opaque).mediaTagged && !readSource(opaque).mediaOverride)
+const offRead = readBlock(Lua.applyBlock("", mediaOff))
+check("off reads back as tagged without the override", offRead.mediaTagged && !offRead.mediaOverride)
+check("a block from before the switch reads as the default, not off", (function() {
+  const legacy = readSource("")
+  return !legacy.mediaTagged && !legacy.mediaOverride
+})())
+
+const bothRules = Lua.renderWindowsBody({ "decoration:active_opacity": 0.8, "omaland:opaque_windows": true })
+check("Full opacity comes before the media override",
+      bothRules.indexOf('".*"') !== -1 && bothRules.indexOf('".*"') < bothRules.indexOf("override"), bothRules)
+check("both rules read back", readSource(bothRules).opaque && readSource(bothRules).mediaOverride)
+
 check("preview carries both bodies", (function() {
   const both = Lua.renderPreview({ "decoration:rounding": 12, "omaland:opaque_windows": true }, baseline)
   return both.indexOf("rounding = 12") !== -1 && both.indexOf("o.window") !== -1

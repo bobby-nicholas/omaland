@@ -9,7 +9,10 @@
 --
 --   k  <key:path>  <type>  <value>                     an hl.config setting
 --   a  <leaf>  <enabled>  <speed>  <bezier>  <style>   an hl.animation leaf
---   w  <opacity>                                       a window rule opacity
+--   w  <match>  <opacity>                              a window rule opacity
+--   t  <match>  <tag>                                  a window rule tag change
+--
+-- <match> is the class pattern, or tag:<name>.
 --
 -- Nothing is applied: every stub only records. Exits non-zero with the Lua
 -- error on stderr if the chunk does not load or run.
@@ -37,13 +40,24 @@ local function walk(t, prefix)
   end
 end
 
+local function selector(match)
+  if type(match) == "string" then return match end
+  if type(match) ~= "table" then return "" end
+  if match.tag then return "tag:" .. tostring(match.tag) end
+  return match.class or ""
+end
+
 hl = {
   config = function(t) walk(t, "") end,
   animation = function(t)
     emit("a", t.leaf or "", t.enabled ~= false, t.speed or "", t.bezier or "", t.style or "")
   end,
   curve = function() end,
-  window_rule = function(t) if t and t.opacity then emit("w", t.opacity) end end,
+  window_rule = function(t)
+    if type(t) ~= "table" then return end
+    if t.opacity then emit("w", selector(t.match), t.opacity) end
+    if t.tag then emit("t", selector(t.match), t.tag) end
+  end,
   bind = function() end,
   unbind = function() end,
   monitor = function() end,
@@ -51,8 +65,10 @@ hl = {
 }
 
 o = {
-  window = function(_, rules)
-    if type(rules) == "table" and rules.opacity then emit("w", rules.opacity) end
+  window = function(match, rules)
+    if type(rules) ~= "table" then return end
+    if rules.opacity then emit("w", selector(match), rules.opacity) end
+    if rules.tag then emit("t", selector(match), rules.tag) end
   end,
   bind = function() end,
 }
