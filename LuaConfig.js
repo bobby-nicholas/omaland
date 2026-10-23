@@ -14,8 +14,12 @@ var END_FENCE = "-- <<< omaland managed block <<<"
 
 var ANIMATION_SPEED_KEY = "omaland:animation_speed"
 var OPAQUE_WINDOWS_KEY = "omaland:opaque_windows"
+var OPAQUE_MEDIA_KEY = "omaland:opaque_media"
 
-var SYNTHETIC_KEYS = [ANIMATION_SPEED_KEY, OPAQUE_WINDOWS_KEY]
+var SYNTHETIC_KEYS = [ANIMATION_SPEED_KEY, OPAQUE_WINDOWS_KEY, OPAQUE_MEDIA_KEY]
+
+var OPACITY_KEYS = ["decoration:active_opacity", "decoration:inactive_opacity", "decoration:fullscreen_opacity"]
+var MEDIA_TAG = "omaland-opaque"
 
 // ---------------------------------------------------------------- rendering
 
@@ -111,12 +115,52 @@ function renderConfigBody(overrides, baseline) {
   return chunks.join("\n\n")
 }
 
-// Re-applies Omarchy's blanket opacity rule at 1.0. Registered after
-// default/hypr/windows.lua, so it wins; the decoration:*_opacity globals still
-// multiply on top, which is what keeps the opacity sliders meaningful.
+// Whether any opacity slider is below 1 — the only time the override has
+// anything to undo.
+function lowersOpacity(overrides) {
+  for (var i = 0; i < OPACITY_KEYS.length; i++) {
+    var v = overrides[OPACITY_KEYS[i]]
+    if (v !== undefined && Number(v) < 1) return true
+  }
+  return false
+}
+
+// Omarchy keeps video, image viewers, games, VMs and picture-in-picture solid
+// by dropping them from its default-opacity tag. That only skips the 0.985
+// rule: the decoration:*_opacity globals still multiply into every window, so
+// a lowered slider made those see-through too. These rules collect everything
+// Omarchy opted out — minus browsers, which opt out only to set their own
+// translucency — and pin it at 1 with `override`, which ignores the globals.
+// Following the tag rather than copying Omarchy's app list keeps up with it.
+//
+// The tag matcher takes one literal name (no regex, no alternation), hence a
+// tag of our own to subtract the browsers from.
+//
+// Switched off, the tagging stays and only the override goes, so "off" is on
+// disk. A block with no media rules at all — every block written before this
+// switch existed — therefore reads as the default rather than as off.
+function renderMediaRules(overrides) {
+  var off = overrides[OPAQUE_MEDIA_KEY] === false
+  if (!off && !lowersOpacity(overrides)) return ""
+  var rules = [
+    'o.window({ tag = "negative:default-opacity" }, { tag = "+' + MEDIA_TAG + '" })',
+    'o.window({ tag = "chromium-based-browser" }, { tag = "-' + MEDIA_TAG + '" })',
+    'o.window({ tag = "firefox-based-browser" }, { tag = "-' + MEDIA_TAG + '" })'
+  ]
+  if (!off) rules.push('o.window({ tag = "' + MEDIA_TAG + '" }, { opacity = "1 override 1 override 1 override" })')
+  return rules.join("\n")
+}
+
+// Full opacity re-applies Omarchy's blanket opacity rule at 1.0. Registered
+// after default/hypr/windows.lua, so it wins; the decoration:*_opacity globals
+// still multiply on top, which is what keeps the opacity sliders meaningful.
+// The media rules come after it, so its plain "1 1" can't undo their override.
 function renderWindowsBody(overrides) {
-  if (overrides[OPAQUE_WINDOWS_KEY] !== true) return ""
-  return 'o.window(".*", { opacity = "1 1" })'
+  var rules = []
+  if (overrides[OPAQUE_WINDOWS_KEY] === true) rules.push('o.window(".*", { opacity = "1 1" })')
+  var media = renderMediaRules(overrides)
+  if (media) rules.push(media)
+  return rules.join("\n")
 }
 
 // Everything Omaland currently asserts, in one chunk, for `hyprctl eval`.
@@ -144,9 +188,10 @@ function renderBlock(body) {
 //
 //   k  <key:path>  <type>  <value>
 //   a  <leaf>  <enabled>  <speed>  <bezier>  <style>
-//   w  <opacity>
+//   w  <match>  <opacity>
+//   t  <match>  <tag>
 function parseHarness(stdout) {
-  var result = { overrides: {}, animations: [], opaque: false }
+  var result = { overrides: {}, animations: [], opaque: false, mediaTagged: false, mediaOverride: false }
   var lines = String(stdout || "").split("\n")
 
   for (var i = 0; i < lines.length; i++) {
@@ -163,8 +208,11 @@ function parseHarness(stdout) {
         bezier: f[4],
         style: f[5]
       })
-    } else if (f[0] === "w") {
-      result.opaque = true
+    } else if (f[0] === "w" && f.length >= 3) {
+      if (f[1] === ".*") result.opaque = true
+      else if (f[1] === "tag:" + MEDIA_TAG) result.mediaOverride = true
+    } else if (f[0] === "t" && f.length >= 3) {
+      if (f[2] === "+" + MEDIA_TAG) result.mediaTagged = true
     }
   }
   return result

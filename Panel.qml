@@ -29,7 +29,7 @@ Item {
   readonly property string readLua: Paths.fromUrl(Qt.resolvedUrl("read.lua"))
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
   readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
-  readonly property string displayPath: overrides[Schema.OPAQUE_WINDOWS_KEY] === true
+  readonly property string displayPath: LuaConfig.renderWindowsBody(overrides) !== ""
     ? "~/.config/hypr/looknfeel.lua + hyprland.lua"
     : "~/.config/hypr/looknfeel.lua"
 
@@ -171,9 +171,9 @@ Item {
   }
 
   function setValue(item, value, commit) {
-    // Switching a synthetic toggle off isn't a value, it's the absence of one:
-    // drop the key so the emitted Lua disappears and Omarchy's default returns.
-    if (item.synthetic && item.type === "bool" && value !== true) {
+    // Switching a synthetic toggle back to its default isn't a value, it's the
+    // absence of one: drop the key so the default's Lua (or lack of it) returns.
+    if (item.synthetic && item.type === "bool" && value === (item.fallback === true)) {
       resetKeys([item.key])
       return
     }
@@ -369,6 +369,7 @@ Item {
       var read = LuaConfig.parseHarness(out)
       var next = {}
       if (read.opaque) next[Schema.OPAQUE_WINDOWS_KEY] = true
+      if (read.mediaTagged && !read.mediaOverride) next[Schema.OPAQUE_MEDIA_KEY] = false
       root.diskWindows = next
       root.adoptDisk()
     }

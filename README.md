@@ -38,7 +38,7 @@ first to undo them too.
 | **Windows** | gaps in/out/workspaces/floating, border width, border inside window, snapping |
 | **Layout** | tiling engine, plus the active engine's own knobs (`dwindle:*`, `master:*`, `scrolling:*`) |
 | **Corners** | rounding, roundness curve |
-| **Opacity** | full opacity, focused, unfocused, fullscreen |
+| **Opacity** | full opacity, focused, unfocused, fullscreen, keep media opaque |
 | **Dimming** | dim unfocused, strength, special workspace, dim around, dim behind modals |
 | **Blur** | enabled, size, passes, noise, contrast, brightness, vibrancy, x-ray, special, popups |
 | **Shadow** | enabled, range, falloff, scale, sharp |
@@ -95,6 +95,17 @@ stripped, so asking it where we live returns nothing.
 **Full opacity** clears the `opacity = "0.985 0.96"` rule Omarchy applies to
 every window. That rule multiplies with the opacity sliders, so without the
 switch 100% still renders at 0.985.
+
+**Keep media opaque** holds video players, image viewers, games, VMs and
+picture-in-picture solid while the sliders make everything else see-through.
+Omarchy already exempts those apps from its own translucency, but the sliders
+multiply into every window, exemptions included. Omaland keeps no app list of
+its own: it follows the `default-opacity` tag Omarchy uses for its exemptions,
+minus browsers, and pins those windows with `override` so the sliders skip
+them. Anything Omarchy exempts in future is covered too. It is on by default
+and writes nothing until a slider drops below 100%. A video inside an ordinary
+browser tab can't be told apart from the rest of the browser, so it follows
+the sliders; the Fullscreen slider covers full-screen playback.
 
 <details>
 <summary>Reaching it from the Omarchy menu as well</summary>
