@@ -15,6 +15,10 @@ Item {
   property var value: 0
   property bool modified: false
   property bool available: true
+  property string description: item.description
+  // Where the option is held instead, when an Omarchy preset overrides it.
+  property string lockedBy: ""
+  readonly property bool locked: lockedBy !== ""
   property bool hasCursor: false
   property color foreground: Color.foreground
   property color accent: Color.accent
@@ -44,7 +48,8 @@ Item {
   }
 
   implicitHeight: Math.max(labels.implicitHeight, control.implicitHeight) + Style.spacing.xxl
-  opacity: available ? 1 : 0.38
+  // A locked row keeps its explanation readable and dims only the control.
+  opacity: available || locked ? 1 : 0.38
   enabled: available
 
   Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -97,9 +102,9 @@ Item {
     }
 
     Text {
-      text: root.item.description
+      text: root.locked ? "Set by " + root.lockedBy : root.description
       visible: text !== ""
-      color: Qt.darker(root.foreground, 1.55)
+      color: root.locked ? root.accent : Qt.darker(root.foreground, 1.55)
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
       width: parent.width
@@ -115,6 +120,7 @@ Item {
     anchors.verticalCenter: parent.verticalCenter
     spacing: Style.spacing.lg
     layoutDirection: Qt.RightToLeft
+    opacity: root.locked ? 0.38 : 1
 
     // Reserved even when hidden, so sliders stay aligned down the section.
     Item {

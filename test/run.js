@@ -17,12 +17,12 @@ function load(file, exports) {
 }
 
 const Schema = load("Schema.js", [
-  "SECTIONS", "ANIMATION_SPEED_KEY", "allItems", "itemFor", "queryKeys", "quantize"
+  "SECTIONS", "ANIMATION_SPEED_KEY", "allItems", "itemFor", "queryKeys", "quantize", "toggleLabel"
 ])
 const Lua = load("LuaConfig.js", [
   "renderBlock", "renderConfigBody", "renderWindowsBody", "renderPreview",
   "parseHarness", "animationSpeedFrom", "applyBlock", "splitBlock",
-  "lowersOpacity"
+  "lowersOpacity", "migrateWindowsBlock", "parseToggles", "workspaceLayoutDefault"
 ])
 
 let failures = 0
@@ -59,6 +59,10 @@ function readFile(file) {
 }
 function readBlock(text) {
   return readSource(Lua.splitBlock(text).body)
+}
+function rawRead(source) {
+  return execFileSync("lua", [path.join(root, "read.lua"), "-e", source],
+                      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
 }
 
 const OMARCHY = process.env.OMARCHY_PATH || "/usr/share/omarchy"
@@ -191,6 +195,20 @@ check("off is remembered with the sliders at 1",
       Lua.renderWindowsBody({ "omaland:opaque_media": false }).indexOf("+omaland-opaque") !== -1)
 eq("the switch stays out of the looknfeel body",
    Lua.renderConfigBody({ "omaland:opaque_media": false }, baseline), "")
+check("the tag is cleared from every window before it's handed out",
+      media.indexOf('o.window(".*", { tag = "-omaland-opaque" })') === 0, media)
+check("the block asks Omarchy which model it runs, at load time",
+      media.indexOf("if o.transparent_window then") !== -1, media)
+check("on 4.5 it follows the transparent-window tag",
+      rawRead("o.transparent_window = function() end\n" + media).indexOf("tag:negative:transparent-window\t+omaland-opaque") !== -1)
+check("on 4.0 it follows the default-opacity tag",
+      rawRead(media).indexOf("tag:negative:default-opacity\t+omaland-opaque") !== -1
+      && rawRead(media).indexOf("transparent-window") === -1)
+check("a window Super + Backspace opts in is handed back before the override",
+      media.indexOf('{ tag = "transparent-window" }, { tag = "-omaland-opaque" }') !== -1
+      && media.indexOf('{ tag = "transparent-window" }, { tag = "-omaland-opaque" }') < media.indexOf("override"), media)
+check("4.5 doesn't hand browsers back — they're opaque apps there",
+      rawRead("o.transparent_window = function() end\n" + media).indexOf("chromium-based-browser") === -1)
 check("each opacity slider counts", ["active", "inactive", "fullscreen"].every(function(k) {
   const o = {}; o["decoration:" + k + "_opacity"] = 0.5
   return Lua.lowersOpacity(o)
@@ -212,6 +230,71 @@ const bothRules = Lua.renderWindowsBody({ "decoration:active_opacity": 0.8, "oma
 check("Full opacity comes before the media override",
       bothRules.indexOf('".*"') !== -1 && bothRules.indexOf('".*"') < bothRules.indexOf("override"), bothRules)
 check("both rules read back", readSource(bothRules).opaque && readSource(bothRules).mediaOverride)
+
+console.log("\nMigrating older blocks")
+
+const legacyBody = [
+  'o.window(".*", { opacity = "1 1" })',
+  'o.window({ tag = "negative:default-opacity" }, { tag = "+omaland-opaque" })',
+  'o.window({ tag = "chromium-based-browser" }, { tag = "-omaland-opaque" })',
+  'o.window({ tag = "firefox-based-browser" }, { tag = "-omaland-opaque" })',
+  'o.window({ tag = "omaland-opaque" }, { opacity = "1 override 1 override 1 override" })'
+].join("\n")
+const legacyFile = "-- mine\nhl.config({})\n\n" + Lua.applyBlock("", legacyBody) + "-- after\n"
+
+const on40 = Lua.migrateWindowsBlock(legacyFile, false)
+check("legacy media tagging gains the 4.5 branch", on40.text.indexOf("if o.transparent_window then") !== -1, on40.text)
+check("on 4.0 Full opacity stays", on40.text.indexOf('o.window(".*", { opacity = "1 1" })') !== -1 && !on40.removedFullOpacity)
+check("the override survives the migration", on40.text.indexOf('{ tag = "omaland-opaque" }, { opacity = "1 override') !== -1)
+check("bytes outside the fences are untouched",
+      on40.text.indexOf("-- mine\nhl.config({})\n\n") === 0 && /-- after\n$/.test(on40.text))
+eq("migration is idempotent", Lua.migrateWindowsBlock(on40.text, false).text, on40.text)
+
+const on45 = Lua.migrateWindowsBlock(legacyFile, true)
+check("on 4.5 Full opacity leaves the block",
+      on45.text.indexOf('o.window(".*", { opacity = "1 1" })') === -1 && on45.removedFullOpacity, on45.text)
+check("and reads back as off", readBlock(on45.text).opaque === false)
+check("media still reads back as on", readBlock(on45.text).mediaTagged && readBlock(on45.text).mediaOverride)
+eq("a current block is left alone",
+   Lua.migrateWindowsBlock(Lua.applyBlock("", Lua.renderWindowsBody(dimmed)), true).text,
+   Lua.applyBlock("", Lua.renderWindowsBody(dimmed)))
+eq("a file without a block is left alone", Lua.migrateWindowsBlock("-- nothing\n", true).text, "-- nothing\n")
+
+console.log("\nAppearance presets")
+
+const scan = Lua.parseToggles([
+  "shipped\tcorners-sharp", "shipped\tno-animations", "shipped\twindow-glassy", "shipped\twindow-opaque",
+  "active\tno-animations",
+  "k\tdecoration:blur:enabled\tboolean\tfalse",
+  "k\tanimations:enabled\tboolean\tfalse",
+  "active\twindow-glassy",
+  "k\tdecoration:blur:enabled\tboolean\ttrue",
+  "k\tdecoration:blur:size\tnumber\t4",
+  "w\torg\\.gnome\\.Nautilus\t0.75 0.75"
+].join("\n"))
+eq("shipped toggles are listed", scan.shipped.length, 4)
+eq("active toggles are listed", scan.active, ["no-animations", "window-glassy"])
+eq("the later toggle holds a shared option, as Omarchy loads them",
+   scan.locks["decoration:blur:enabled"], "window-glassy")
+eq("each toggle locks what it sets", scan.locks["animations:enabled"], "no-animations")
+check("window rules lock nothing", scan.locks["org\\.gnome\\.Nautilus"] === undefined)
+
+eq("workspace layout default is read as Omarchy reads it",
+   Lua.workspaceLayoutDefault('o.workspace_mode({ default = "scrolling" })\n'), "scrolling")
+eq("no default file, no default", Lua.workspaceLayoutDefault(""), "")
+eq("known toggles name their menu item", Schema.toggleLabel("corners-sharp"), "Appearance › Window Corners › Sharp")
+check("unknown toggles still get a name", Schema.toggleLabel("future-thing").indexOf("future-thing") !== -1)
+
+const glassy = OMARCHY + "/default/hypr/toggles/window-glassy.lua"
+if (!fs.existsSync(glassy)) {
+  console.log("  skip (no " + glassy + " on this machine)")
+} else {
+  // The toggle requires Omarchy's shared glass module; read.lua has to find it.
+  const out = execFileSync("lua", [path.join(root, "read.lua"), glassy],
+                           { encoding: "utf8", env: Object.assign({}, process.env, { OMARCHY_PATH: OMARCHY }) })
+  check("a real toggle runs through read.lua, shared modules and all",
+        Lua.parseHarness(out).overrides["decoration:blur:size"] !== undefined, out.split("\n")[0])
+}
 
 check("preview carries both bodies", (function() {
   const both = Lua.renderPreview({ "decoration:rounding": 12, "omaland:opaque_windows": true }, baseline)

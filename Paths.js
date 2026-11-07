@@ -2,11 +2,11 @@
 
 // Where the plugin lives on disk.
 //
-// The shell used to hand third-party plugins a manifest carrying the internal
-// `__sourceDir`. Since the capability-scoped facades landed, `manifest` is a
-// sanitized copy (shell.qml `publicPluginManifest` deletes `__sourceDir`,
-// `__isFirstParty` and `__hostCapabilities`), so that field is now undefined
-// for anything that isn't first-party.
+// The manifest the shell hands third-party plugins is a sanitized copy
+// (shell.qml `publicPluginManifest`). Omarchy 4.0.4 through 4.0.6 deleted the
+// internal `__sourceDir` from it along with the trust markers, so the field
+// was undefined for anything that isn't first-party; 4.5 hands it back. Not
+// depending on it keeps every version working.
 //
 // A QML file always knows its own URL, and every file we need is a sibling of
 // an entry point at the root of the plugin directory, so resolving against

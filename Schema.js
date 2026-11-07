@@ -66,7 +66,7 @@ var SECTIONS = [
     title: "Layout",
     blurb: "The tiling engine, and the knobs belonging to whichever one is active.",
     items: [
-      item("general:layout", "Engine", "Scrolling gives you niri-style side-scrolling columns.", "enum",
+      item("general:layout", "Engine", "Scrolling gives you niri-style side-scrolling columns. A workspace given its own layout with Super + L keeps it.", "enum",
            { options: [
                { value: "dwindle", label: "Dwindle" },
                { value: "master", label: "Master" },
@@ -136,7 +136,8 @@ var SECTIONS = [
       // default/hypr/windows.lua. That rule multiplies with the globals below,
       // so without this switch the sliders top out at 0.985 rather than 1.
       item(OPAQUE_WINDOWS_KEY, "Full opacity", "", "bool",
-           { synthetic: true, fallback: false }),
+           { synthetic: true, fallback: false,
+             handoffDescription: "Omarchy's Appearance › Window Opacity › Opaque. Terminals go solid too." }),
       item("decoration:active_opacity", "Focused", "Opacity of the focused window.", "float",
            { min: 0.3, max: 1.0, step: 0.01, decimals: 2 }),
       item("decoration:inactive_opacity", "Unfocused", "Opacity of every other window.", "float",
@@ -144,8 +145,8 @@ var SECTIONS = [
       item("decoration:fullscreen_opacity", "Fullscreen", "Opacity while a window is fullscreen.", "float",
            { min: 0.3, max: 1.0, step: 0.01, decimals: 2 }),
       // The sliders multiply into every window, including the ones Omarchy
-      // exempts from translucency. On by default; see LuaConfig.renderMediaRules.
-      item(OPAQUE_MEDIA_KEY, "Keep media opaque", "Video, images, games and picture-in-picture skip the sliders above.", "bool",
+      // keeps solid. On by default; see LuaConfig.renderMediaRules.
+      item(OPAQUE_MEDIA_KEY, "Opaque apps stay opaque", "The sliders above only reach windows Omarchy makes see-through.", "bool",
            { synthetic: true, fallback: true })
     ]
   },
@@ -264,6 +265,25 @@ var SECTIONS = [
     ]
   }
 ]
+
+// Omarchy's Appearance menu switches presets on by copying toggle files that
+// load after looknfeel.lua, so whatever they set beats Omaland's block. Which
+// options a toggle holds is read from the toggle itself (see Panel.qml); this
+// only names where to change it back. A toggle missing here still locks its
+// options, under its file name.
+var APPEARANCE_TOGGLES = {
+  "corners-sharp": "Appearance › Window Corners › Sharp",
+  "corners-rounded": "Appearance › Window Corners › Rounded",
+  "window-no-gaps": "Appearance › Windows › Window Gaps Off",
+  "window-glassy": "Appearance › Window Opacity › Glassy",
+  "bar-glassy": "Appearance › Menu Bar › Glassy Bar",
+  "no-animations": "Appearance › Animations Off"
+}
+var WORKSPACE_LAYOUT_LOCK = "Appearance › Workspace Layout"
+
+function toggleLabel(name) {
+  return APPEARANCE_TOGGLES[name] || ("Omarchy's " + name + " toggle")
+}
 
 function allItems() {
   var out = []
