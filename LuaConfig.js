@@ -125,36 +125,58 @@ function lowersOpacity(overrides) {
   return false
 }
 
-// Omarchy keeps video, image viewers, games, VMs and picture-in-picture solid
-// by dropping them from its default-opacity tag. That only skips the 0.985
-// rule: the decoration:*_opacity globals still multiply into every window, so
-// a lowered slider made those see-through too. These rules collect everything
-// Omarchy opted out — minus browsers, which opt out only to set their own
-// translucency — and pin it at 1 with `override`, which ignores the globals.
-// Following the tag rather than copying Omarchy's app list keeps up with it.
+// The decoration:*_opacity globals multiply into every window, including the
+// ones Omarchy means to keep solid, so a lowered slider made those see-through
+// too. These rules tag every window Omarchy doesn't make see-through and pin it
+// at 1 with `override`, which ignores the globals. They follow Omarchy's own
+// tags rather than an app list, so they keep up with it.
+//
+// Which tag says "see-through" changed in Omarchy 4.5, so the block asks at
+// load time rather than Omaland deciding when it writes. That keeps one block
+// right on either side of an upgrade:
+//
+//   4.5+   apps are opaque unless o.transparent_window opts them in with the
+//          transparent-window tag (terminals, and whatever the user adds).
+//          Super + Backspace opts one in while it's open by tagging it, and
+//          only a rule matching that tag runs again when it changes, hence
+//          the explicit hand-back ahead of the override.
+//   4.0    every window carries default-opacity unless an app rule drops it
+//          (media, games, VMs); browsers drop it only to set their own
+//          translucency, so they're handed back.
 //
 // The tag matcher takes one literal name (no regex, no alternation), hence a
-// tag of our own to subtract the browsers from.
-//
+// tag of our own to add and subtract with. Hyprland keeps a rule's tags on open
+// windows after a reload drops the rule, so the tag is cleared from every
+// window first; otherwise a window tagged by an older block stays pinned.
+var MEDIA_TAGGING = [
+  'o.window(".*", { tag = "-' + MEDIA_TAG + '" })',
+  "if o.transparent_window then",
+  '  o.window({ tag = "negative:transparent-window" }, { tag = "+' + MEDIA_TAG + '" })',
+  '  o.window({ tag = "transparent-window" }, { tag = "-' + MEDIA_TAG + '" })',
+  "else",
+  '  o.window({ tag = "negative:default-opacity" }, { tag = "+' + MEDIA_TAG + '" })',
+  '  o.window({ tag = "chromium-based-browser" }, { tag = "-' + MEDIA_TAG + '" })',
+  '  o.window({ tag = "firefox-based-browser" }, { tag = "-' + MEDIA_TAG + '" })',
+  "end"
+].join("\n")
+
 // Switched off, the tagging stays and only the override goes, so "off" is on
 // disk. A block with no media rules at all — every block written before this
 // switch existed — therefore reads as the default rather than as off.
 function renderMediaRules(overrides) {
   var off = overrides[OPAQUE_MEDIA_KEY] === false
   if (!off && !lowersOpacity(overrides)) return ""
-  var rules = [
-    'o.window({ tag = "negative:default-opacity" }, { tag = "+' + MEDIA_TAG + '" })',
-    'o.window({ tag = "chromium-based-browser" }, { tag = "-' + MEDIA_TAG + '" })',
-    'o.window({ tag = "firefox-based-browser" }, { tag = "-' + MEDIA_TAG + '" })'
-  ]
+  var rules = [MEDIA_TAGGING]
   if (!off) rules.push('o.window({ tag = "' + MEDIA_TAG + '" }, { opacity = "1 override 1 override 1 override" })')
   return rules.join("\n")
 }
 
-// Full opacity re-applies Omarchy's blanket opacity rule at 1.0. Registered
-// after default/hypr/windows.lua, so it wins; the decoration:*_opacity globals
-// still multiply on top, which is what keeps the opacity sliders meaningful.
-// The media rules come after it, so its plain "1 1" can't undo their override.
+// Full opacity re-applies Omarchy 4.0's blanket opacity rule at 1.0.
+// Registered after default/hypr/windows.lua, so it wins; the
+// decoration:*_opacity globals still multiply on top, which is what keeps the
+// opacity sliders meaningful. The media rules come after it, so its plain
+// "1 1" can't undo their override. On 4.5 Omarchy owns this switch (Appearance
+// › Window Opacity › Opaque) and Omaland never writes the rule; see Panel.qml.
 function renderWindowsBody(overrides) {
   var rules = []
   if (overrides[OPAQUE_WINDOWS_KEY] === true) rules.push('o.window(".*", { opacity = "1 1" })')
@@ -235,6 +257,72 @@ function animationSpeedFrom(animations, baseline) {
 
 
 
+
+// Blocks written by earlier Omaland versions, rewritten in place once:
+//
+//   - media tagging from before the 4.5 branch. On 4.5 nothing carries
+//     default-opacity, so it pinned every window and the sliders reached
+//     nothing but browsers.
+//   - on 4.5, the blanket Full opacity rule. It ran after Omarchy's floating
+//     workspaces pin their windows with `override`, and wiped that out; the
+//     caller hands the choice to Omarchy's own Opaque mode instead.
+//
+// Only Omaland's own exact lines are touched. Returns the new text and whether
+// Full opacity was taken out.
+var LEGACY_MEDIA_TAGGING = [
+  'o.window({ tag = "negative:default-opacity" }, { tag = "+' + MEDIA_TAG + '" })',
+  'o.window({ tag = "chromium-based-browser" }, { tag = "-' + MEDIA_TAG + '" })',
+  'o.window({ tag = "firefox-based-browser" }, { tag = "-' + MEDIA_TAG + '" })'
+].join("\n")
+var LEGACY_FULL_OPACITY = 'o.window(".*", { opacity = "1 1" })'
+
+function migrateWindowsBlock(text, omarchyOwnsOpacity) {
+  var split = splitBlock(text)
+  var result = { text: String(text || ""), removedFullOpacity: false }
+  if (!split.found) return result
+
+  var lines = split.body.split("\n")
+  if (omarchyOwnsOpacity) {
+    var kept = lines.filter(function(line) { return line !== LEGACY_FULL_OPACITY })
+    result.removedFullOpacity = kept.length !== lines.length
+    lines = kept
+  }
+  var body = lines.join("\n")
+  if (body.indexOf("o.transparent_window") === -1)
+    body = body.replace(LEGACY_MEDIA_TAGGING, MEDIA_TAGGING)
+
+  if (body !== split.body) result.text = split.before + BEGIN_FENCE + body + END_FENCE + split.after
+  return result
+}
+
+// Which options Omarchy's Appearance toggles hold. The toggle scan prints
+//
+//   shipped  <name>     a toggle this Omarchy ships
+//   active   <name>     one the user has switched on, followed by read.lua's
+//                       records for Omarchy's own copy of it
+//
+// and every `k` record after an `active` line belongs to that toggle. Omarchy
+// loads toggles in sorted order, as the scan walks them, so when two set the
+// same option the later one holds it.
+function parseToggles(stdout) {
+  var result = { shipped: [], active: [], locks: {} }
+  var current = ""
+  var lines = String(stdout || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var f = lines[i].split("\t")
+    if (f[0] === "shipped" && f[1]) result.shipped.push(f[1])
+    else if (f[0] === "active" && f[1]) { current = f[1]; result.active.push(current) }
+    else if (f[0] === "k" && f.length >= 4 && current) result.locks[f[1]] = current
+  }
+  return result
+}
+
+// The default Appearance › Workspace Layout saves, as Omarchy itself reads it
+// back. Floating isn't a Hyprland layout and leaves general:layout alone.
+function workspaceLayoutDefault(text) {
+  var match = String(text || "").match(/default\s*=\s*"([a-z]+)"/)
+  return match ? match[1] : ""
+}
 
 function splitBlock(text) {
   var source = String(text || "")

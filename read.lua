@@ -16,6 +16,13 @@
 --
 -- Nothing is applied: every stub only records. Exits non-zero with the Lua
 -- error on stderr if the chunk does not load or run.
+--
+-- Omarchy's toggle files require its shared modules (default.hypr.glass), so
+-- those resolve against OMARCHY_PATH the way Hyprland's own loader does.
+
+local omarchy = os.getenv("OMARCHY_PATH")
+if omarchy == nil or omarchy == "" then omarchy = "/usr/share/omarchy" end
+package.path = omarchy .. "/?.lua;" .. package.path
 
 local out = {}
 
@@ -61,6 +68,8 @@ hl = {
   bind = function() end,
   unbind = function() end,
   monitor = function() end,
+  layer_rule = function() end,
+  workspace_rule = function() end,
   on = function() end,
 }
 

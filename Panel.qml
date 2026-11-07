@@ -29,6 +29,7 @@ Item {
   readonly property string readLua: Paths.fromUrl(Qt.resolvedUrl("read.lua"))
   readonly property string configPath: home + "/.config/hypr/looknfeel.lua"
   readonly property string windowsPath: home + "/.config/hypr/hyprland.lua"
+  readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || (home + "/.local/state")
   readonly property string displayPath: LuaConfig.renderWindowsBody(overrides) !== ""
     ? "~/.config/hypr/looknfeel.lua + hyprland.lua"
     : "~/.config/hypr/looknfeel.lua"
@@ -43,6 +44,13 @@ Item {
   property var diskConfig: ({})
   property var diskWindows: ({})
   property int pendingSaves: 0
+
+  // Omarchy's Appearance presets: which options its active toggles hold, the
+  // default workspace layout, and whether Omarchy (4.5+) owns Full opacity.
+  property var toggleLocks: ({})
+  property string workspaceLayoutDefault: ""
+  property bool omarchyOwnsOpacity: false
+  property bool omarchyOpaque: false
 
   property int sectionIndex: 0
   property int cursorIndex: 0
@@ -85,6 +93,8 @@ Item {
     configFile.reload()
     windowsFile.reload()
     defaultsFile.reload()
+    layoutFile.reload()
+    scanToggles()
     refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -148,11 +158,35 @@ Item {
 
   // --------------------------------------------------------------- values
 
+  // An Appearance preset loads after looknfeel.lua, so an option it sets can't
+  // be changed from here; the row shows the live value and where it's held.
+  function lockFor(key) {
+    if (root.toggleLocks[key] !== undefined) return Schema.toggleLabel(root.toggleLocks[key])
+    if (key === "general:layout" && root.workspaceLayoutDefault !== ""
+        && root.workspaceLayoutDefault !== "floating") return Schema.WORKSPACE_LAYOUT_LOCK
+    return ""
+  }
+
+  // On 4.5 Full opacity is Omarchy's own Opaque mode, driven through its
+  // command: Omarchy loads it before floating workspaces pin their windows, an
+  // ordering a rule at the end of hyprland.lua can't keep.
+  function handsOff(item) {
+    return item.key === Schema.OPAQUE_WINDOWS_KEY && root.omarchyOwnsOpacity
+  }
+
+  function descriptionFor(item) {
+    if (handsOff(item) && item.handoffDescription) return item.handoffDescription
+    return item.description
+  }
+
   function isModified(key) {
+    if (key === Schema.OPAQUE_WINDOWS_KEY && root.omarchyOwnsOpacity) return false
     return root.overrides[key] !== undefined
   }
 
   function valueFor(item) {
+    if (handsOff(item)) return root.omarchyOpaque
+    if (lockFor(item.key) !== "" && root.effective[item.key] !== undefined) return root.effective[item.key]
     if (root.overrides[item.key] !== undefined) return root.overrides[item.key]
     if (root.effective[item.key] !== undefined) return root.effective[item.key]
     if (item.fallback !== undefined) return item.fallback
@@ -165,12 +199,20 @@ Item {
 
   function isAvailable(item) {
     if (item.key === Schema.ANIMATION_SPEED_KEY && root.animationBaseline.length === 0) return false
+    if (lockFor(item.key) !== "") return false
     if (!item.needs || item.needsValue !== undefined) return true
     var dep = Schema.itemFor(item.needs)
     return dep ? valueFor(dep) === true : true
   }
 
   function setValue(item, value, commit) {
+    if (handsOff(item)) {
+      root.omarchyOpaque = value === true
+      transparencyProc.command = ["omarchy-hyprland-window-transparency", value === true ? "opaque" : "transparent"]
+      transparencyProc.running = true
+      return
+    }
+
     // Switching a synthetic toggle back to its default isn't a value, it's the
     // absence of one: drop the key so the default's Lua (or lack of it) returns.
     if (item.synthetic && item.type === "bool" && value === (item.fallback === true)) {
@@ -221,10 +263,11 @@ Item {
   }
 
   // The shell mirrors decoration:rounding and general:gaps_out into Style for
-  // the menu, notifications and every panel, but only re-reads them at startup
-  // and when a theme is applied — it doesn't watch looknfeel.lua. Ask it to
-  // re-read after anything that changes what Hyprland reports. Undocumented
-  // surface, so a missing method leaves the shell stale rather than throwing.
+  // the menu, notifications and every panel. Since Omarchy 4.5 it re-reads them
+  // on Hyprland's configreloaded event, which covers a save but not a preview:
+  // `hyprctl eval` doesn't fire it. Earlier versions only re-read at startup
+  // and on a theme change. Undocumented surface, so a missing method leaves the
+  // shell stale rather than throwing.
   function syncShellStyle() {
     if (typeof Style.scheduleRefresh === "function") Style.scheduleRefresh()
   }
@@ -233,6 +276,7 @@ Item {
     var out = {}
     for (var k in root.diskConfig) out[k] = root.diskConfig[k]
     for (var j in root.diskWindows) out[j] = root.diskWindows[j]
+    if (root.omarchyOwnsOpacity) delete out[Schema.OPAQUE_WINDOWS_KEY]
     root.overrides = out
   }
 
@@ -418,7 +462,54 @@ Item {
     onExited: {
       errorsProc.running = true
       root.refresh()
+      root.scanToggles()
       root.syncShellStyle()
+    }
+  }
+
+  // Runs Omarchy's own copy of each toggle the user has switched on through
+  // read.lua, so what a preset holds comes from the preset — never from a list
+  // kept here. Only names Omarchy ships are run, and only its shipped copies:
+  // the state directory has held generated files Omarchy itself refuses to
+  // load as code.
+  function scanToggles() {
+    toggleScan.running = true
+  }
+
+  Process {
+    id: toggleScan
+    command: ["bash", "-c",
+        'for f in "$2"/*.lua; do [ -f "$f" ] && printf "shipped\t%s\n" "$(basename "$f" .lua)"; done\n'
+      + 'for f in "$1"/*.lua; do\n'
+      + '  name=$(basename "$f" .lua); shipped="$2/$name.lua"\n'
+      + '  [ -f "$f" ] && [ -f "$shipped" ] || continue\n'
+      + '  printf "active\t%s\n" "$name"\n'
+      + '  lua "$3" "$shipped" 2>/dev/null\n'
+      + 'done\n',
+      "bash", root.stateHome + "/omarchy/toggles/hypr", root.omarchyPath + "/default/hypr/toggles", root.readLua]
+    environment: ({ OMARCHY_PATH: root.omarchyPath })
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var scan = LuaConfig.parseToggles(text)
+        root.toggleLocks = scan.locks
+        root.omarchyOpaque = scan.active.indexOf("window-opaque") !== -1
+        var owns = scan.shipped.indexOf("window-opaque") !== -1
+        if (owns !== root.omarchyOwnsOpacity) {
+          root.omarchyOwnsOpacity = owns
+          root.adoptDisk()
+        }
+      }
+    }
+  }
+
+  // Omarchy's command reloads Hyprland itself, and restarts the terminals so
+  // their glass follows.
+  Process {
+    id: transparencyProc
+    onExited: {
+      root.scanToggles()
+      root.refresh()
     }
   }
 
@@ -485,6 +576,16 @@ Item {
       if (root.selfWrite || persistTimer.running) return
       reload()
     }
+  }
+
+  FileView {
+    id: layoutFile
+    path: root.stateHome + "/omarchy/workspace-layouts/default.lua"
+    printErrors: false
+    watchChanges: true
+    onLoaded: root.workspaceLayoutDefault = LuaConfig.workspaceLayoutDefault(text())
+    onLoadFailed: root.workspaceLayoutDefault = ""
+    onFileChanged: reload()
   }
 
   FileView {
@@ -745,6 +846,8 @@ Item {
                 value: root.valueFor(modelData)
                 modified: root.isModified(modelData.key)
                 available: root.isAvailable(modelData)
+                description: root.descriptionFor(modelData)
+                lockedBy: root.lockFor(modelData.key)
                 hasCursor: root.cursorIndex === index
                 foreground: root.foreground
                 accent: root.accent
